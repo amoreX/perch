@@ -11,14 +11,15 @@ export async function getConnectionStatus(userId: string, toolkitSlug: string): 
 }> {
   try {
     const c = getComposio();
-    const result = await c.connectedAccounts.list({
-      userIds: [userId],
-      toolkitSlugs: [toolkitSlug],
-      statuses: ['ACTIVE'],
-    });
-    const account = result.items?.[0];
-    if (account) {
-      return { connected: true, accountId: account.id, status: account.status };
+    // Check ACTIVE first, then fall back to any status (account may still be initializing after OAuth)
+    for (const statuses of [['ACTIVE'], undefined]) {
+      const query: any = { userIds: [userId], toolkitSlugs: [toolkitSlug] };
+      if (statuses) query.statuses = statuses;
+      const result = await c.connectedAccounts.list(query);
+      const account = result.items?.[0];
+      if (account) {
+        return { connected: true, accountId: account.id, status: account.status };
+      }
     }
     return { connected: false };
   } catch (err) {
@@ -35,18 +36,38 @@ export async function initiateConnection(
   try {
     const c = getComposio();
 
+    // Delete all existing connected accounts first to prevent duplicates
+    try {
+      const existing = await c.connectedAccounts.list({
+        userIds: [userId],
+        toolkitSlugs: [toolkitSlug],
+      });
+      for (const account of existing.items ?? []) {
+        if (account?.id) {
+          console.log(`[composio:${toolkitSlug}] Deleting existing account ${account.id} before reconnect`);
+          await c.connectedAccounts.delete(account.id);
+        }
+      }
+    } catch (cleanupErr) {
+      console.warn(`[composio:${toolkitSlug}] Cleanup of existing accounts failed (continuing):`, cleanupErr);
+    }
+
     const authConfigs = await (c as any).authConfigs.list({ toolkitSlugs: [toolkitSlug] });
-    const appConfig = authConfigs?.items?.[0] ?? authConfigs?.[0];
+    const allConfigs = authConfigs?.items ?? authConfigs ?? [];
+    console.log(`[composio:${toolkitSlug}] Auth configs found:`, allConfigs.map((c: any) => ({ id: c.id, appName: c.appName })));
+    // Pick the config matching our toolkit, not a random Google OAuth one
+    const appConfig = allConfigs.find((c: any) => c.appName === toolkitSlug) ?? allConfigs[0];
 
     if (!appConfig?.id) {
       return { error: `No auth config found for ${toolkitSlug}. Set it up in your Composio dashboard first.` };
     }
+    console.log(`[composio:${toolkitSlug}] Using auth config: ${appConfig.id} (appName: ${appConfig.appName})`);
 
     const connectionRequest = await c.connectedAccounts.initiate(
       userId,
       appConfig.id,
       {
-        callbackUrl: `http://localhost:${config.port}/api/apps/${appType}/callback`,
+        callbackUrl: `http://localhost:${config.port}/api/apps/${appType}/callback?user_id=${encodeURIComponent(userId)}`,
       }
     );
 
@@ -78,9 +99,11 @@ export async function disconnect(userId: string, toolkitSlug: string, appType: s
       userIds: [userId],
       toolkitSlugs: [toolkitSlug],
     });
-    const account = result.items?.[0];
-    if (account?.id) {
-      await c.connectedAccounts.delete(account.id);
+    // Delete ALL connected accounts (not just the first) to clear duplicates
+    for (const account of result.items ?? []) {
+      if (account?.id) {
+        await c.connectedAccounts.delete(account.id);
+      }
     }
 
     await supabase

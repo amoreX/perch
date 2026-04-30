@@ -6,7 +6,10 @@ import {
   initiateConnection,
   disconnect,
   syncConnectionToDb,
+  invalidateActiveAppsCache,
 } from '../composio/connection.js';
+import { getComposio } from '../composio/client.js';
+import { supabase } from '../lib/supabase.js';
 import { COMPOSIO_APPS } from '../composio/tools.js';
 
 /**
@@ -31,6 +34,20 @@ function createSingleAppRoutes(appType: string, toolkitSlug: string, displayName
     }
 
     const status = await getConnectionStatus(userId, toolkitSlug);
+    // Fall back to DB if Composio doesn't report connected yet
+    if (!status.connected) {
+      const { data } = await supabase
+        .from('connected_apps')
+        .select('active')
+        .eq('user_id', userId)
+        .eq('app_type', appType)
+        .single();
+      if (data?.active) {
+        console.log(`${tag} → connected=true (from DB, composio lagging)`);
+        res.json({ connected: true });
+        return;
+      }
+    }
     console.log(`${tag} → connected=${status.connected}`);
     res.json(status);
   });
@@ -71,15 +88,62 @@ function createSingleAppRoutes(appType: string, toolkitSlug: string, displayName
     res.json({ ok: success });
   });
 
+  router.post('/reset', requireAuth, async (req, res) => {
+    const userId = req.user!.sub;
+    console.log(`${tag} POST /reset userId=${userId}`);
+
+    try {
+      const c = getComposio();
+      // Delete ALL connected accounts for this user (no toolkit filter — nuke everything under this auth config)
+      const all = await c.connectedAccounts.list({ userIds: [userId] });
+      let deleted = 0;
+      for (const account of all.items ?? []) {
+        if (account?.id) {
+          try {
+            await c.connectedAccounts.delete(account.id);
+            deleted++;
+            console.log(`${tag} Deleted composio account ${account.id}`);
+          } catch (e: any) {
+            console.warn(`${tag} Failed to delete account ${account.id}:`, e.message);
+          }
+        }
+      }
+      console.log(`${tag} Reset: deleted ${deleted} composio accounts`);
+    } catch (e: any) {
+      console.warn(`${tag} Reset composio cleanup error:`, e.message);
+    }
+
+    // Clear DB state for this app
+    await supabase
+      .from('connected_apps')
+      .update({ active: false, composio_conn_id: null, disconnected_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('app_type', appType);
+
+    invalidateActiveAppsCache(userId);
+    res.json({ ok: true });
+  });
+
   // OAuth callback — Composio redirects here after user authorizes.
   // The userId comes as a query param that Composio passes through (entity_id).
   router.get('/callback', async (req, res) => {
     console.log(`${tag} OAuth callback received:`, req.query);
 
-    // Composio passes the entity_id (our userId) back in the callback
-    const userId = (req.query.entity_id as string) ?? (req.query.entityId as string);
+    const userId = (req.query.user_id as string) ?? (req.query.entity_id as string) ?? (req.query.entityId as string);
+    const connAccountId = req.query.connectedAccountId as string | undefined;
+    console.log(`${tag} Callback userId=${userId}, connectedAccountId=${connAccountId}`);
     if (userId) {
-      await syncConnectionToDb(userId, appType, toolkitSlug);
+      await supabase
+        .from('connected_apps')
+        .update({
+          active: true,
+          composio_conn_id: connAccountId ?? null,
+          connected_at: new Date().toISOString(),
+          disconnected_at: null,
+        })
+        .eq('user_id', userId)
+        .eq('app_type', appType);
+      invalidateActiveAppsCache(userId);
     }
 
     res.send(`
