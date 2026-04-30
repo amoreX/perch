@@ -1098,25 +1098,45 @@ struct AppConnectionRow: View {
                         .scaleEffect(0.5)
                         .frame(width: 32, height: 18)
                 } else {
-                    Button(action: {
-                        if isConnected {
-                            viewModel.disconnectApp(appType)
-                        } else {
-                            viewModel.connectApp(appType)
+                    HStack(spacing: 6) {
+                        if error != nil && !isConnected {
+                            Button(action: {
+                                viewModel.resetApp(appType)
+                            }) {
+                                Text("RESET")
+                                    .font(DN.label(7))
+                                    .tracking(0.6)
+                                    .foregroundColor(DN.warning)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .stroke(DN.warning.opacity(0.4), lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
                         }
-                    }) {
-                        Text(isConnected ? "DISCONNECT" : "CONNECT")
-                            .font(DN.label(7))
-                            .tracking(0.6)
-                            .foregroundColor(isConnected ? DN.accent : DN.success)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(isConnected ? DN.accent.opacity(0.4) : DN.success.opacity(0.4), lineWidth: 1)
-                            )
+
+                        Button(action: {
+                            if isConnected {
+                                viewModel.disconnectApp(appType)
+                            } else {
+                                viewModel.connectApp(appType)
+                            }
+                        }) {
+                            Text(isConnected ? "DISCONNECT" : "CONNECT")
+                                .font(DN.label(7))
+                                .tracking(0.6)
+                                .foregroundColor(isConnected ? DN.accent : DN.success)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(isConnected ? DN.accent.opacity(0.4) : DN.success.opacity(0.4), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
 

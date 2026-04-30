@@ -689,11 +689,23 @@ class NotchViewModel: ObservableObject {
                let url = URL(string: redirectUrl) {
                 await MainActor.run {
                     NSWorkspace.shared.open(url)
-                    self.appLoading[appType] = false
                 }
-                // Poll for connection after user completes OAuth
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                self.checkAppStatus(appType)
+                // Poll for connection until OAuth completes (up to 2 minutes)
+                for _ in 0..<40 {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    var statusReq = URLRequest(url: URL(string: "\(APIConfig.baseURL)/api/apps/\(appType)/status")!)
+                    statusReq.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    if let (sData, _) = try? await URLSession.shared.data(for: statusReq),
+                       let sJson = try? JSONSerialization.jsonObject(with: sData) as? [String: Any],
+                       sJson["connected"] as? Bool == true {
+                        await MainActor.run {
+                            self.appConnected[appType] = true
+                            self.appLoading[appType] = false
+                        }
+                        return
+                    }
+                }
+                await MainActor.run { self.appLoading[appType] = false }
                 return
             }
 
@@ -720,6 +732,29 @@ class NotchViewModel: ObservableObject {
                 return
             }
             var request = URLRequest(url: URL(string: "\(APIConfig.baseURL)/api/apps/\(appType)/disconnect")!)
+            request.httpMethod = "POST"
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+            _ = try? await URLSession.shared.data(for: request)
+            await MainActor.run {
+                self.appConnected[appType] = false
+                self.appLoading[appType] = false
+            }
+        }
+    }
+
+    func resetApp(_ appType: String) {
+        guard let auth = authManager else { return }
+        appLoading[appType] = true
+        appError[appType] = nil
+        Task {
+            await auth.ensureValidToken()
+            guard let token = auth.accessToken else {
+                await MainActor.run { self.appLoading[appType] = false }
+                return
+            }
+            var request = URLRequest(url: URL(string: "\(APIConfig.baseURL)/api/apps/\(appType)/reset")!)
             request.httpMethod = "POST"
             request.addValue("application/json", forHTTPHeaderField: "Content-Type")
             request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

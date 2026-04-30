@@ -225,6 +225,10 @@ class NotchWindowController: NSObject {
             if case .agentChat = viewModel.viewState, viewModel.settings.keepOpenInChat {
                 return
             }
+            // Don't auto-collapse while an app connection is in progress
+            if viewModel.appLoading.values.contains(true) {
+                return
+            }
             scheduleCollapse()
         }
     }
