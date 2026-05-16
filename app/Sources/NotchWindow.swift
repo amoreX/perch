@@ -277,11 +277,16 @@ class NotchWindowController: NSObject {
             )
             hit = expandedRect.contains(mouse)
         } else {
+            // Extend the hit rect UP past the screen's top edge so the very
+            // topmost row of pixels (which macOS sometimes reserves for the
+            // menu-bar edge / system gestures and which NSRect.contains
+            // treats as exclusive on the max edge) still counts as a hit.
+            let edgeSlack: CGFloat = 4
             let notchRect = NSRect(
                 x: cx - nw / 2,
                 y: screen.frame.maxY - nh,
                 width: nw,
-                height: nh
+                height: nh + edgeSlack
             )
             hit = notchRect.contains(mouse)
         }
