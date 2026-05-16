@@ -27,8 +27,11 @@ struct NotchShellView: View {
             return viewModel.peekHovering ? notchH + 80 : notchH + 28
         }
         if !expanded { return notchH }
+        if viewModel.isQuickPrompt { return notchH + Self.quickPromptH }
         return notchH + Self.expandedH
     }
+
+    static let quickPromptH: CGFloat = 58
 
     private var bottomRadius: CGFloat {
         if viewModel.isPeeking { return 12 }
@@ -51,7 +54,19 @@ struct NotchShellView: View {
                     .transition(.opacity)
             }
 
-            if expanded && !viewModel.isPeeking {
+            if expanded && !viewModel.isPeeking && viewModel.isQuickPrompt {
+                quickPromptHintBar
+                    .transition(.opacity)
+
+                QuickPromptView(viewModel: viewModel)
+                    .padding(.top, notchH + 1)
+                    .padding(.horizontal, DN.spaceMD)
+                    .padding(.bottom, DN.spaceMD)
+                    .frame(width: shapeWidth, alignment: .bottom)
+                    .transition(.opacity)
+            }
+
+            if expanded && !viewModel.isPeeking && !viewModel.isQuickPrompt {
                 expandedTopBar
                     .transition(.opacity)
 
@@ -59,7 +74,7 @@ struct NotchShellView: View {
                 // so no layout reflow needed.
                 expandedContent
                     .padding(.top, notchH + 1)
-                    .padding(.horizontal, DN.spaceMD)
+                    .padding(.horizontal, 10)
                     .padding(.bottom, bottomPaddingForState)
                     .frame(width: shapeWidth, alignment: .top)
                     .id(viewModel.viewState.transitionKey)
@@ -111,6 +126,7 @@ struct NotchShellView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(DN.expandSpring, value: expanded)
+        .animation(DN.expandSpring, value: viewModel.isQuickPrompt)
         .animation(DN.peekSpring, value: viewModel.isPeeking)
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: viewModel.peekHovering)
         .animation(DN.viewStateSpring, value: viewModel.viewState)
@@ -174,7 +190,7 @@ struct NotchShellView: View {
         case .stats, .processList, .settings, .notifications:
             return 0
         default:
-            return DN.spaceMD
+            return 10
         }
     }
 
@@ -243,6 +259,42 @@ struct NotchShellView: View {
     // Both side groups sit on the same baseline (vertically centered to notchH)
     // and all controls are pill-shaped with a single height to share a baseline.
 
+    // Quick-prompt mode hint bar — sits in the top-bar zone flanking the
+    // physical notch. Mirrors the expandedTopBar layout grid so the pills
+    // sit on the same baseline as the regular top-bar tabs.
+    private var quickPromptHintBar: some View {
+        let sideInset: CGFloat = DN.spaceMD
+
+        return HStack(alignment: .center, spacing: 0) {
+            Color.clear.frame(width: sideInset)
+
+            hintPill(key: "Enter", caption: "to send")
+
+            Spacer(minLength: DN.spaceSM)
+            Color.clear.frame(width: notchW)
+            Spacer(minLength: DN.spaceSM)
+
+            hintPill(key: "Esc", caption: "to dismiss")
+
+            Color.clear.frame(width: sideInset)
+        }
+        .frame(width: shapeWidth, height: notchH)
+    }
+
+    private func hintPill(key: String, caption: String) -> some View {
+        HStack(spacing: 6) {
+            Text(key)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6)
+                .frame(height: 16)
+                .glassEffect(.regular, in: .capsule)
+            Text(caption)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        }
+    }
+
     // Top bar: discrete capsule glass buttons, never .glassProminent (its
     // automatic foreground inversion turns active text black). Active state
     // is conveyed by a brighter tint on the same .glass style so the text
@@ -254,15 +306,11 @@ struct NotchShellView: View {
         return HStack(alignment: .center, spacing: 0) {
             Color.clear.frame(width: sideInset)
 
-            // Left cluster — Home / Agents. spacing: 6 leaves a visible gap
-            // between capsules; no GlassEffectContainer so they don't morph
-            // into one continuous blob.
+            // Left cluster — Today. Single tab keeps the bar uncluttered;
+            // chat/thread navigation lives within Today itself.
             HStack(spacing: 6) {
-                topBarTab("Home", isActive: viewModel.viewState == .overview) {
+                topBarTab("Today", isActive: viewModel.viewState == .overview || viewModel.isInTaskOrChat) {
                     withAnimation(DN.transition) { viewModel.viewState = .overview }
-                }
-                topBarTab("Agents", isActive: viewModel.isInTaskOrChat) {
-                    withAnimation(DN.transition) { viewModel.viewState = .taskList }
                 }
             }
 

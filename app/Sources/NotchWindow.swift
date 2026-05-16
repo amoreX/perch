@@ -199,10 +199,14 @@ class NotchWindowController: NSObject {
             if self.viewModel.isExpanded {
                 self.collapse()
             } else {
-                // Drop down on whichever monitor currently has the cursor.
+                // Drop down on whichever monitor currently has the cursor in
+                // quick-prompt mode — a semi-expanded notch with just a glass
+                // text field. Sending will spring the panel to full height
+                // and continue in the chat view.
                 if let screen = self.screenForMouse() {
                     self.activateScreen(screen)
                 }
+                self.viewModel.isQuickPrompt = true
                 self.expand()
                 self.viewModel.viewState = .overview
                 self.viewModel.shouldFocusChatInput = true
@@ -332,6 +336,9 @@ class NotchWindowController: NSObject {
         if viewModel.isPeeking {
             return viewModel.peekHovering ? notchH + 80 : notchH + 28
         }
+        if viewModel.isQuickPrompt {
+            return notchH + NotchShellView.quickPromptH
+        }
         return notchH + NotchShellView.expandedH
     }
 
@@ -355,6 +362,7 @@ class NotchWindowController: NSObject {
     private func collapse() {
         withAnimation(DN.collapseSpring) {
             viewModel.isExpanded = false
+            viewModel.isQuickPrompt = false
             viewModel.isChatInputActive = false
             viewModel.resetView()
         }

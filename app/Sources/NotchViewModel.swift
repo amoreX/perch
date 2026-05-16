@@ -155,6 +155,7 @@ class NotchViewModel: ObservableObject {
     @Published var currentTime: Date = Date()
     @Published var viewState: NotchViewState = .overview
     @Published var isExpanded = false
+    @Published var isQuickPrompt = false
     @Published var shimmerStep: Int = 0
     @Published var shouldFocusChatInput = false
     @Published var isChatInputActive = false
