@@ -221,146 +221,98 @@ struct NotchShellView: View {
     // Both side groups sit on the same baseline (vertically centered to notchH)
     // and all controls are pill-shaped with a single height to share a baseline.
 
-    // Top bar: identical inset on both sides of the notch gap, no battery.
+    // Top bar: vanilla SwiftUI Buttons styled with .buttonStyle(.glass) /
+    // .glassProminent inside GlassEffectContainers per Apple's Liquid Glass
+    // guidance (macOS 26+). No hand-painted backgrounds, strokes, or gradients.
     // Layout: [pad] [LEFT CLUSTER] [grow] [physical notch] [grow] [RIGHT CLUSTER] [pad]
     private var expandedTopBar: some View {
         let sideInset: CGFloat = DN.spaceMD
 
         return HStack(alignment: .center, spacing: 0) {
-            // Left edge inset
             Color.clear.frame(width: sideInset)
 
-            // Left cluster — flush to the left edge inset
-            HStack(spacing: DN.spaceXS) {
-                pillTab(label: "Home", isActive: viewModel.viewState == .overview) {
-                    withAnimation(DN.transition) {
-                        viewModel.viewState = .overview
+            // Left cluster — Home / Agents
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: DN.spaceXS) {
+                    topBarTab("Home", isActive: viewModel.viewState == .overview) {
+                        withAnimation(DN.transition) { viewModel.viewState = .overview }
                     }
-                }
-                pillTab(label: "Agents", isActive: viewModel.isInTaskOrChat) {
-                    withAnimation(DN.transition) {
-                        viewModel.viewState = .taskList
+                    topBarTab("Agents", isActive: viewModel.isInTaskOrChat) {
+                        withAnimation(DN.transition) { viewModel.viewState = .taskList }
                     }
                 }
             }
 
-            // Flexible spacer up to notch
             Spacer(minLength: DN.spaceSM)
-
-            // Physical notch
             Color.clear.frame(width: notchW)
-
-            // Flexible spacer after notch
             Spacer(minLength: DN.spaceSM)
 
-            // Right cluster — flush to the right edge inset
-            HStack(spacing: DN.spaceXS) {
-                pillTab(label: "Stats", isActive: viewModel.viewState == .stats || viewModel.viewState == .processList) {
-                    withAnimation(DN.transition) {
-                        viewModel.viewState = .stats
+            // Right cluster — Stats / Bell / Settings
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: DN.spaceXS) {
+                    topBarTab("Stats", isActive: viewModel.viewState == .stats || viewModel.viewState == .processList) {
+                        withAnimation(DN.transition) { viewModel.viewState = .stats }
                     }
-                }
-
-                let notifsActive = viewModel.viewState == .notifications
-                pillIcon(
-                    icon: notifsActive ? "bell.fill" : "bell",
-                    isActive: notifsActive,
-                    badge: viewModel.unreadCount > 0
-                ) {
-                    withAnimation(DN.transition) {
-                        viewModel.viewState = .notifications
+                    topBarIcon(
+                        viewModel.viewState == .notifications ? "bell.fill" : "bell",
+                        isActive: viewModel.viewState == .notifications,
+                        badge: viewModel.unreadCount > 0
+                    ) {
+                        withAnimation(DN.transition) { viewModel.viewState = .notifications }
                     }
-                }
-
-                let settingsActive = viewModel.viewState == .settings
-                pillIcon(
-                    icon: settingsActive ? "gearshape.fill" : "gearshape",
-                    isActive: settingsActive
-                ) {
-                    withAnimation(DN.transition) {
-                        viewModel.viewState = .settings
+                    topBarIcon(
+                        viewModel.viewState == .settings ? "gearshape.fill" : "gearshape",
+                        isActive: viewModel.viewState == .settings
+                    ) {
+                        withAnimation(DN.transition) { viewModel.viewState = .settings }
                     }
                 }
             }
 
-            // Right edge inset
             Color.clear.frame(width: sideInset)
         }
         .frame(width: shapeWidth, height: notchH)
     }
 
-    // Unified pill — fixed metrics. Weight stays constant (so glyph never reflows),
-    // only color and background opacity change between states.
-    private func pillTab(label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(isActive ? DN.textDisplay : DN.textSecondary)
-                .padding(.horizontal, 12)
-                .frame(height: 24)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(isActive ? 0.14 : 0.0))
-                )
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(Color.white.opacity(isActive ? 0.16 : 0.0), lineWidth: 0.6)
-                )
-                .contentShape(Capsule())
+    @ViewBuilder
+    private func topBarTab(_ label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+        if isActive {
+            Button(label, action: action)
+                .buttonStyle(.glassProminent)
+                .controlSize(.small)
+                .tint(.white.opacity(0.18))
+        } else {
+            Button(label, action: action)
+                .buttonStyle(.glass)
+                .controlSize(.small)
+                .tint(.clear)
         }
-        .buttonStyle(.plain)
     }
 
-    private func pillIcon(icon: String, isActive: Bool, badge: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(isActive ? DN.textDisplay : DN.textSecondary)
-                    .frame(width: 24, height: 24)
-
-                if badge {
-                    Circle()
-                        .fill(DN.accent)
-                        .frame(width: 5, height: 5)
-                        .offset(x: 2, y: -2)
-                }
+    @ViewBuilder
+    private func topBarIcon(_ icon: String, isActive: Bool, badge: Bool = false, action: @escaping () -> Void) -> some View {
+        let label = Image(systemName: icon).symbolRenderingMode(.hierarchical)
+        ZStack(alignment: .topTrailing) {
+            if isActive {
+                Button(action: action) { label }
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.small)
+                    .tint(.white.opacity(0.18))
+            } else {
+                Button(action: action) { label }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .tint(.clear)
             }
-            .frame(width: 24, height: 24)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.white.opacity(isActive ? 0.14 : 0.0))
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(Color.white.opacity(isActive ? 0.16 : 0.0), lineWidth: 0.6)
-            )
-            .contentShape(Capsule())
+            if badge {
+                Circle()
+                    .fill(.red)
+                    .frame(width: 5, height: 5)
+                    .offset(x: -2, y: 2)
+            }
         }
-        .buttonStyle(.plain)
     }
 
-    // Legacy tabButton kept for compatibility with any remaining call sites
-    private func tabButton(label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(DN.label(10))
-                .tracking(1.2)
-                .foregroundColor(isActive ? DN.textDisplay : DN.textDisabled)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(isActive ? Color.white.opacity(0.12) : Color.clear)
-                )
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(isActive ? DN.glassStrokeHi : Color.clear, lineWidth: 0.6)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
 }
 
 // MARK: - Battery

@@ -92,15 +92,6 @@ enum DN {
         .spring(response: 0.38, dampingFraction: 0.82, blendDuration: 0.15)
     }
 
-    // MARK: Liquid Glass colors
-
-    static let glassFill        = Color.white.opacity(0.06)
-    static let glassFillElev    = Color.white.opacity(0.10)
-    static let glassStrokeHi    = Color.white.opacity(0.14)
-    static let glassStrokeLo    = Color.white.opacity(0.03)
-    static let glassHighlight   = Color.white.opacity(0.22)
-    static let glassRimShadow   = Color.black.opacity(0.45)
-
     // MARK: Status color for tasks
 
     static func statusColor(_ status: TaskStatus) -> Color {
@@ -142,86 +133,16 @@ func relativeTimeString(_ date: Date, fallbackFormat: String = "MMM d") -> Strin
     return df.string(from: date)
 }
 
-// MARK: - Liquid Glass Modifier (macOS Tahoe-style)
-
-struct LiquidGlass: ViewModifier {
-    var cornerRadius: CGFloat = 14
-    var tint: Color? = nil
-    var intensity: Double = 1.0
-    var elevated: Bool = false
-
-    func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-
-        return content
-            .background(
-                ZStack {
-                    // Base material — Tahoe-style blur
-                    shape.fill(.ultraThinMaterial)
-
-                    // Light frosted overlay (instead of heavy dark tint) — keeps glass legible on dark wallpapers
-                    shape.fill(Color.white.opacity(0.04 * intensity))
-                    shape.fill(Color.black.opacity(0.10 * intensity))
-
-                    // Optional hue tint — very subtle
-                    if let tint = tint {
-                        shape.fill(tint.opacity(0.08 * intensity))
-                    }
-
-                    // Soft top-to-bottom inner glass sheen
-                    shape.fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(elevated ? 0.12 : 0.07),
-                                Color.white.opacity(0.0),
-                            ],
-                            startPoint: .top, endPoint: .center
-                        )
-                    )
-
-                    // Bottom rim shadow — adds depth
-                    shape.fill(
-                        LinearGradient(
-                            colors: [
-                                Color.clear,
-                                Color.black.opacity(0.14 * intensity),
-                            ],
-                            startPoint: .center, endPoint: .bottom
-                        )
-                    )
-                }
-            )
-            .clipShape(shape)
-            .overlay(
-                // Outer rim light — gradient stroke (top-leading bright, bottom-trailing dark)
-                shape.stroke(
-                    LinearGradient(
-                        colors: [
-                            DN.glassStrokeHi,
-                            DN.glassStrokeLo,
-                            Color.white.opacity(0.06),
-                        ],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.8
-                )
-            )
-            .overlay(
-                // Specular highlight on the very top edge
-                shape
-                    .trim(from: 0.0, to: 0.5)
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.0), DN.glassHighlight, Color.white.opacity(0.0)],
-                            startPoint: .leading, endPoint: .trailing
-                        ),
-                        lineWidth: 0.6
-                    )
-                    .blendMode(.plusLighter)
-                    .allowsHitTesting(false)
-            )
-    }
-}
+// MARK: - Liquid Glass (vanilla Apple primitive)
+//
+// Per Apple's Liquid Glass guidance (macOS 26+):
+//   - glass belongs only on the navigation/controls layer, never on content
+//   - never hand-paint sheens, gradient strokes, or borders — the material does that
+//   - neighboring glass surfaces must share a GlassEffectContainer
+//
+// `liquidGlass()` is a thin passthrough to `.glassEffect()` for the few remaining
+// call sites that previously used the custom modifier. New code should call
+// `.glassEffect(...)` directly with the proper shape.
 
 extension View {
     func liquidGlass(
@@ -230,17 +151,15 @@ extension View {
         intensity: Double = 1.0,
         elevated: Bool = false
     ) -> some View {
-        modifier(LiquidGlass(
-            cornerRadius: cornerRadius,
-            tint: tint,
-            intensity: intensity,
-            elevated: elevated
-        ))
+        let glass: Glass = tint.map { Glass.regular.tint($0.opacity(0.6)) } ?? Glass.regular
+        return self.glassEffect(
+            glass,
+            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        )
     }
 
-    // Back-compat: legacy glassCell call sites get the new look automatically
     func glassCell(cornerRadius: CGFloat = 14) -> some View {
-        modifier(LiquidGlass(cornerRadius: cornerRadius))
+        glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 
@@ -264,16 +183,13 @@ struct ActiveBadge: View {
     var body: some View {
         if count > 0 {
             HStack(spacing: 4) {
-                Circle().fill(DN.warning).frame(width: 5, height: 5)
+                Image(systemName: "circle.fill")
+                    .font(.system(size: 5))
+                    .foregroundStyle(.yellow)
                 Text("\(count) active")
-                    .font(DN.body(9, weight: .medium))
-                    .foregroundColor(DN.warning)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(
-                Capsule(style: .continuous).fill(DN.warning.opacity(0.10))
-            )
         }
     }
 }

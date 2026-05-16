@@ -339,41 +339,31 @@ struct NotchContentView: View {
 
     private var chatInputBar: some View {
         HStack(spacing: DN.spaceSM) {
-            TextField("", text: $chatInputText, prompt: Text("Ask anything")
-                .font(DN.body(12))
-                .foregroundColor(DN.textDisabled)
-            )
-            .textFieldStyle(.plain)
-            .font(DN.body(12))
-            .foregroundColor(DN.textPrimary)
-            .focused($isChatInputFocused)
-            .onChange(of: isChatInputFocused) { _, focused in
-                viewModel.isChatInputActive = focused
-            }
-            .onSubmit { submitChat() }
+            TextField("Ask anything", text: $chatInputText)
+                .textFieldStyle(.plain)
+                .controlSize(.large)
+                .focused($isChatInputFocused)
+                .onChange(of: isChatInputFocused) { _, focused in
+                    viewModel.isChatInputActive = focused
+                }
+                .onSubmit { submitChat() }
 
             if !chatInputText.isEmpty {
-                Button(action: { submitChat() }) {
+                Button {
+                    submitChat()
+                } label: {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 22, height: 22)
-                        .background(
-                            Circle()
-                                .fill(.ultraThinMaterial)
-                                .overlay(Circle().fill(Color.white.opacity(0.16)))
-                                .overlay(Circle().stroke(DN.glassStrokeHi, lineWidth: 0.6))
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glassProminent)
+                .controlSize(.small)
+                .tint(.accentColor)
                 .transition(.scale.combined(with: .opacity))
             }
         }
         .padding(.horizontal, DN.spaceMD)
         .padding(.vertical, DN.spaceSM)
-        .liquidGlass(cornerRadius: DN.radiusLG, intensity: isChatInputFocused ? 1.1 : 0.9, elevated: isChatInputFocused)
+        .glassEffect(.regular, in: .capsule)
         .animation(DN.transition, value: chatInputText.isEmpty)
-        .animation(DN.transition, value: isChatInputFocused)
     }
 
     private func submitChat() {
@@ -1298,11 +1288,7 @@ struct MiniCalendarView: View {
                             .background {
                                 if day == currentDay {
                                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .fill(Color.white.opacity(0.14))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                                .stroke(DN.glassStrokeHi, lineWidth: 0.6)
-                                        )
+                                        .fill(Color.white.opacity(0.10))
                                 }
                             }
                             .id(day)
