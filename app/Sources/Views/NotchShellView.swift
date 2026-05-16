@@ -347,7 +347,6 @@ struct NotchShoulder: Shape {
 
         switch corner {
         case .bottomRight:
-            // LEFT shoulder. Concave bite in BOTTOM-RIGHT.
             //   ┌──────────┐
             //   │           │
             //   │           │
@@ -366,7 +365,7 @@ struct NotchShoulder: Shape {
                 radius: r,
                 startAngle: .degrees(0),                      // (w, h-r) — pointing +x from center
                 endAngle: .degrees(90),                       // (w-r, h) — pointing +y from center
-                clockwise: false
+                clockwise: true
             )
             p.addLine(to: CGPoint(x: 0, y: h))                // bottom-left
             p.closeSubpath()
@@ -389,7 +388,7 @@ struct NotchShoulder: Shape {
                 radius: r,
                 startAngle: .degrees(180),                    // (0, h-r) — pointing -x from center
                 endAngle: .degrees(90),                       // (r, h)  — pointing +y from center
-                clockwise: true                               // sweep the short way (visually clockwise in screen coords)
+                clockwise: false
             )
             p.addLine(to: CGPoint(x: w, y: h))                // bottom-right
             p.closeSubpath()
