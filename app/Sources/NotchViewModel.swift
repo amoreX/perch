@@ -60,19 +60,10 @@ class NotchSettings: ObservableObject {
     // Display — pinned widgets
     @Published var pinnedWidgets: [PinnedWidget] { didSet { save() } }
     @Published var showBattery: Bool           { didSet { save() } }
-    @Published var showDotGrid: Bool           { didSet { save() } }
 
     // Agents
     @Published var showAgentLiveState: Bool    { didSet { save() } }
     @Published var compactAgentRows: Bool      { didSet { save() } }
-
-    // Dot grid
-    @Published var dotGridColor: String        { didSet { save() } }
-    @Published var dotGridOpacity: Double      { didSet { save() } }
-
-    var dotGridSwiftColor: Color {
-        Color(hex: UInt32(dotGridColor.dropFirst(), radix: 16) ?? 0xFFFFFF)
-    }
 
     // Computed from pinnedWidgets for backward compatibility
     var showMusic: Bool {
@@ -92,11 +83,8 @@ class NotchSettings: ObservableObject {
         keepOpenInChat = true
         pinnedWidgets = [.calendar, .music]
         showBattery = true
-        showDotGrid = true
         showAgentLiveState = true
         compactAgentRows = false
-        dotGridColor = "#FFFFFF"
-        dotGridOpacity = 0.6
         collapsedGroups = []
 
         // Then load from file
@@ -110,11 +98,8 @@ class NotchSettings: ObservableObject {
             "restoreLastView": restoreLastView,
             "pinnedWidgets": pinnedWidgets.map { $0.rawValue },
             "showBattery": showBattery,
-            "showDotGrid": showDotGrid,
             "showAgentLiveState": showAgentLiveState,
             "compactAgentRows": compactAgentRows,
-            "dotGridColor": dotGridColor,
-            "dotGridOpacity": dotGridOpacity,
             "collapsedGroups": Array(collapsedGroups),
         ]
         do {
@@ -147,11 +132,8 @@ class NotchSettings: ObservableObject {
             if !migrated.isEmpty { pinnedWidgets = migrated }
         }
         if let v = json["showBattery"] as? Bool { showBattery = v }
-        if let v = json["showDotGrid"] as? Bool { showDotGrid = v }
         if let v = json["showAgentLiveState"] as? Bool { showAgentLiveState = v }
         if let v = json["compactAgentRows"] as? Bool { compactAgentRows = v }
-        if let v = json["dotGridColor"] as? String { dotGridColor = v }
-        if let v = json["dotGridOpacity"] as? Double { dotGridOpacity = v }
         if let v = json["collapsedGroups"] as? [String] { collapsedGroups = Set(v) }
     }
 }

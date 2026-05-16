@@ -34,13 +34,6 @@ struct NotchContentView: View {
 
     private var leftColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // User greeting
-            if let name = viewModel.authManager?.userName, !name.isEmpty {
-                Text("Hi, \(name)")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(DN.textSecondary)
-            }
-
             // Time — heavy display
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .lastTextBaseline, spacing: 4) {
@@ -85,7 +78,7 @@ struct NotchContentView: View {
             NowPlayingView(
                 monitor: viewModel.nowPlaying,
                 isBig: viewModel.settings.musicSize == .big,
-                accentColor: viewModel.settings.dotGridSwiftColor
+                accentColor: .white
             )
         case .ram:
             PinnedRAMView(monitor: viewModel.statsMonitor)

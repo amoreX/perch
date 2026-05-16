@@ -52,15 +52,6 @@ struct NotchShellView: View {
             }
 
             if expanded && !viewModel.isPeeking {
-                // Interactive dot grid behind content — toned down so the glass breathes
-                if viewModel.settings.showDotGrid {
-                    DotGridView(dotColor: viewModel.settings.dotGridSwiftColor)
-                        .padding(.top, notchH)
-                        .opacity(viewModel.settings.dotGridOpacity * 0.6)
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
-                }
-
                 expandedTopBar
                     .transition(.opacity)
 
@@ -667,78 +658,84 @@ struct SettingsPanel: View {
     @ObservedObject var viewModel: NotchViewModel
 
     var body: some View {
-        Form {
-            Section("Chat") {
-                Toggle("Open chat on send", isOn: $viewModel.settings.openChatOnSend)
-                Toggle("Restore last view", isOn: $viewModel.settings.restoreLastView)
-                Toggle("Keep open in chat", isOn: $viewModel.settings.keepOpenInChat)
-            }
-
-            Section("Provider") {
-                defaultProviderRow
-                ForEach(["anthropic", "openai", "openrouter"], id: \.self) { providerType in
-                    ProviderRow(viewModel: viewModel, providerType: providerType)
+        // Plain ScrollView + VStack — Form/.formStyle(.grouped) added its
+        // own wrapper insets that didn't line up with the rest of the UI.
+        // Each section is a .contentCard so the visual rhythm matches Home
+        // and Agents pages.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                section(title: "Chat") {
+                    settingsToggle("Open chat on send", $viewModel.settings.openChatOnSend)
+                    settingsToggle("Restore last view", $viewModel.settings.restoreLastView)
+                    settingsToggle("Keep open in chat", $viewModel.settings.keepOpenInChat)
                 }
-            }
 
-            Section {
-                ForEach(PinnedWidget.allCases, id: \.rawValue) { widget in
-                    widgetToggleRow(widget)
-                }
-            } header: {
-                Text("Widgets")
-            } footer: {
-                Text("Pin up to 3 widgets to your overview.")
-            }
-
-            Section("Display") {
-                Toggle("Dot grid", isOn: $viewModel.settings.showDotGrid)
-                if viewModel.settings.showDotGrid {
-                    LabeledContent("Accent color") {
-                        ColorPicker(
-                            "",
-                            selection: Binding(
-                                get: { viewModel.settings.dotGridSwiftColor },
-                                set: { newValue in
-                                    viewModel.settings.dotGridColor = newValue.toHexString()
-                                }
-                            ),
-                            supportsOpacity: false
-                        )
-                        .labelsHidden()
-                    }
-                    LabeledContent("Grid opacity") {
-                        HStack {
-                            Slider(value: $viewModel.settings.dotGridOpacity, in: 0.1...1.0)
-                                .frame(maxWidth: 140)
-                            Text("\(Int(viewModel.settings.dotGridOpacity * 100))%")
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
-                                .font(.caption)
-                        }
+                section(title: "Provider") {
+                    defaultProviderRow
+                    ForEach(["anthropic", "openai", "openrouter"], id: \.self) { providerType in
+                        Divider().background(Color.white.opacity(0.08))
+                        ProviderRow(viewModel: viewModel, providerType: providerType)
                     }
                 }
-            }
 
-            Section("Agents") {
-                Toggle("Live activity", isOn: $viewModel.settings.showAgentLiveState)
-                Toggle("Compact rows", isOn: $viewModel.settings.compactAgentRows)
-            }
+                section(title: "Widgets", footer: "Pin up to 3 widgets to your overview.") {
+                    ForEach(PinnedWidget.allCases, id: \.rawValue) { widget in
+                        widgetToggleRow(widget)
+                    }
+                }
 
-            Section("Integrations") {
-                AppConnectionRow(viewModel: viewModel, appType: "gmail", displayName: "Gmail", icon: "envelope.fill")
-                AppConnectionRow(viewModel: viewModel, appType: "googlecalendar", displayName: "Google Calendar", icon: "calendar")
-                AppConnectionRow(viewModel: viewModel, appType: "googledocs", displayName: "Google Docs", icon: "doc.text.fill")
-                AppConnectionRow(viewModel: viewModel, appType: "github", displayName: "GitHub", icon: "chevron.left.forwardslash.chevron.right")
+                section(title: "Agents") {
+                    settingsToggle("Live activity", $viewModel.settings.showAgentLiveState)
+                    settingsToggle("Compact rows", $viewModel.settings.compactAgentRows)
+                }
+
+                section(title: "Integrations") {
+                    AppConnectionRow(viewModel: viewModel, appType: "gmail", displayName: "Gmail", icon: "envelope.fill")
+                    AppConnectionRow(viewModel: viewModel, appType: "googlecalendar", displayName: "Google Calendar", icon: "calendar")
+                    AppConnectionRow(viewModel: viewModel, appType: "googledocs", displayName: "Google Docs", icon: "doc.text.fill")
+                    AppConnectionRow(viewModel: viewModel, appType: "github", displayName: "GitHub", icon: "chevron.left.forwardslash.chevron.right")
+                }
             }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
         .scrollIndicators(.never)
-        .padding(.horizontal, -8) // counteract the form's default inset so
-                                  // section edges align with the top bar's
-                                  // sideInset (DN.spaceMD = 12pt).
         .onAppear { viewModel.loadProviderConfigs() }
+    }
+
+    // MARK: - Section primitives
+
+    @ViewBuilder
+    private func section<Content: View>(
+        title: String,
+        footer: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.5)
+                .padding(.leading, 4)
+
+            VStack(alignment: .leading, spacing: 8) {
+                content()
+            }
+            .padding(12)
+            .contentCard()
+
+            if let footer = footer {
+                Text(footer)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 4)
+            }
+        }
+    }
+
+    private func settingsToggle(_ label: String, _ binding: Binding<Bool>) -> some View {
+        Toggle(label, isOn: binding)
+            .toggleStyle(.switch)
+            .controlSize(.small)
     }
 
     // MARK: - Default provider row
@@ -860,12 +857,9 @@ struct ProviderRow: View {
                 VStack(alignment: .leading, spacing: 10) {
                     SecureField("API key", text: $apiKey)
                         .textFieldStyle(.plain)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color.white.opacity(0.06))
-                        )
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .glassEffect(.regular, in: .capsule)
 
                     Picker("Model", selection: Binding(
                         get: { modelId.isEmpty ? defaultModel : modelId },
