@@ -79,24 +79,16 @@ struct AgentChatView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Button(action: {
+            Button {
                 withAnimation(DN.transition) {
                     viewModel.viewState = .taskList
                 }
-            }) {
-                HStack(spacing: 3) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Back")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .foregroundColor(DN.textSecondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Capsule(style: .continuous).fill(Color.white.opacity(0.06)))
-                .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.10), lineWidth: 0.6))
+            } label: {
+                Label("Back", systemImage: "chevron.left")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
+            .controlSize(.small)
+            .tint(.clear)
 
             if let task = task {
                 Circle()

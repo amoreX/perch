@@ -207,25 +207,17 @@ struct NotchContentView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(DN.textDisplay)
                 Spacer()
-                Button(action: {
+                Button {
                     withAnimation(DN.transition) {
                         viewModel.viewState = .overview
                         viewModel.shouldFocusChatInput = true
                     }
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 10, weight: .semibold))
-                        Text("New")
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Capsule(style: .continuous).fill(Color.white.opacity(0.10)))
-                    .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 0.6))
+                } label: {
+                    Label("New", systemImage: "plus")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glass)
+                .controlSize(.small)
+                .tint(.clear)
             }
             .padding(.horizontal, 2)
 
@@ -248,7 +240,7 @@ struct NotchContentView: View {
                                     }
                                 }
                             }
-                            .liquidGlass(cornerRadius: DN.radiusMD, intensity: 0.85)
+                            .contentCard(cornerRadius: DN.radiusMD)
                         }
                     }
 
@@ -264,7 +256,7 @@ struct NotchContentView: View {
                                         threadRow(thread)
                                     }
                                 }
-                                .liquidGlass(cornerRadius: DN.radiusMD, intensity: 0.85)
+                                .contentCard(cornerRadius: DN.radiusMD)
                             }
                         }
                     }
@@ -434,7 +426,7 @@ struct NotchContentView: View {
                 }
             }
         }
-        .liquidGlass(cornerRadius: DN.radiusMD, intensity: 0.85)
+        .contentCard(cornerRadius: DN.radiusMD)
     }
 
 }
@@ -446,32 +438,15 @@ struct IconActionButton: View {
     let label: String
     let action: () -> Void
 
-    @State private var isHovering = false
-
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 3) {
-                Image(systemName: icon)
-                    .font(.system(size: 9, weight: .bold))
-
-                if isHovering {
-                    Text(label)
-                        .font(DN.label(7))
-                        .tracking(0.6)
-                        .transition(.opacity.combined(with: .move(edge: .trailing)))
-                }
-            }
-            .foregroundColor(isHovering ? DN.textPrimary : DN.textDisabled)
-            .padding(.horizontal, isHovering ? DN.spaceSM : DN.spaceSM)
-            .padding(.vertical, DN.spaceXS + 1)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(isHovering ? DN.borderVisible : DN.border, lineWidth: 1)
-            )
-            .animation(.easeOut(duration: DN.microDuration), value: isHovering)
+            Image(systemName: icon)
+                .symbolRenderingMode(.hierarchical)
         }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
+        .buttonStyle(.glass)
+        .controlSize(.small)
+        .tint(.clear)
+        .help(label)
     }
 }
 
@@ -541,7 +516,7 @@ struct AgentGroupView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .liquidGlass(cornerRadius: DN.radiusMD, tint: group.type.brandColor, intensity: 0.85)
+        .contentCard(cornerRadius: DN.radiusMD)
     }
 }
 
@@ -1108,7 +1083,7 @@ struct ScheduledTasksSection: View {
                 }
             }
         }
-        .liquidGlass(cornerRadius: DN.radiusMD, tint: DN.warning, intensity: 0.85)
+        .contentCard(cornerRadius: DN.radiusMD)
     }
 }
 
@@ -1362,7 +1337,7 @@ struct MiniCalendarView: View {
             }
         }
         .padding(DN.spaceSM)
-        .liquidGlass(cornerRadius: DN.radiusMD, intensity: 0.8)
+        .contentCard(cornerRadius: DN.radiusMD)
     }
 
     private func dayColor(_ day: Int) -> Color {

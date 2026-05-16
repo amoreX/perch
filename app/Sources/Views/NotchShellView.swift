@@ -406,9 +406,10 @@ struct NotificationsPanel: View {
                 Spacer()
 
                 if viewModel.unreadCount > 0 {
-                    SecondaryActionButton(label: "Mark all read") {
-                        viewModel.markAllRead()
-                    }
+                    Button("Mark all read") { viewModel.markAllRead() }
+                        .buttonStyle(.glass)
+                        .controlSize(.small)
+                        .tint(.clear)
                 }
             }
             .padding(.bottom, DN.spaceXS)
@@ -605,212 +606,135 @@ private func notifDate(_ iso: String) -> String {
     formatRelativeDate(iso, fallbackFormat: "MMM d, h:mm a")
 }
 
-// MARK: - Settings (Apple System Settings-style grouped lists)
+// MARK: - Settings (vanilla Apple Form + Section + native controls)
+//
+// Per Apple's Liquid Glass guidance: never apply glass to content. The Settings
+// page is a form, so we use SwiftUI's `Form` + `Section` directly and let the
+// system render every row, toggle, slider, picker, and field. Action buttons
+// use `.buttonStyle(.glass)` / `.buttonStyle(.glassProminent)` with
+// `.tint(.clear)` on macOS where required.
 
 struct SettingsPanel: View {
     @ObservedObject var viewModel: NotchViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Page title — System Settings style
-            HStack(spacing: 0) {
-                Text("Settings")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(DN.textDisplay)
-                Spacer()
+        Form {
+            Section("Chat") {
+                Toggle("Open chat on send", isOn: $viewModel.settings.openChatOnSend)
+                Toggle("Restore last view", isOn: $viewModel.settings.restoreLastView)
+                Toggle("Keep open in chat", isOn: $viewModel.settings.keepOpenInChat)
             }
-            .padding(.horizontal, 2)
-            .padding(.bottom, DN.spaceMD)
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: DN.spaceMD) {
-                    SettingsSection(title: "Chat") {
-                        SettingsToggleRow(
-                            icon: "bubble.left.and.text.bubble.right",
-                            title: "Open chat on send",
-                            subtitle: "Sending a message opens the conversation instantly",
-                            isOn: $viewModel.settings.openChatOnSend
-                        )
-                        SettingsToggleRow(
-                            icon: "arrow.counterclockwise",
-                            title: "Restore last view",
-                            subtitle: "Re-hover opens the last page instead of home",
-                            isOn: $viewModel.settings.restoreLastView
-                        )
-                        SettingsToggleRow(
-                            icon: "lock.open",
-                            title: "Keep open in chat",
-                            subtitle: "Don't auto-close when viewing a conversation",
-                            isOn: $viewModel.settings.keepOpenInChat
-                        )
-                    }
-
-                    SettingsSection(title: "Provider") {
-                        DefaultProviderRow(viewModel: viewModel)
-                        ProviderRow(viewModel: viewModel, providerType: "anthropic")
-                        ProviderRow(viewModel: viewModel, providerType: "openai")
-                        ProviderRow(viewModel: viewModel, providerType: "openrouter")
-                    }
-
-                    SettingsSection(title: "Widgets", footer: "Pin up to 3 widgets to your overview.") {
-                        ForEach(PinnedWidget.allCases, id: \.rawValue) { widget in
-                            widgetToggleRow(widget)
-                        }
-                    }
-
-                    SettingsSection(title: "Display") {
-                        SettingsToggleRow(
-                            icon: "circle.grid.3x3",
-                            title: "Dot grid",
-                            subtitle: "Animated dot matrix background",
-                            isOn: $viewModel.settings.showDotGrid
-                        )
-                        if viewModel.settings.showDotGrid {
-                            SettingsColorRow(
-                                icon: "paintbrush",
-                                title: "Accent color",
-                                subtitle: "Used for the dot grid and player controls",
-                                selectedHex: $viewModel.settings.dotGridColor
-                            )
-                            SettingsSliderRow(
-                                icon: "circle.lefthalf.filled",
-                                title: "Grid opacity",
-                                subtitle: "Brightness of the dot grid",
-                                value: $viewModel.settings.dotGridOpacity,
-                                range: 0.1...1.0
-                            )
-                        }
-                    }
-
-                    SettingsSection(title: "Agents") {
-                        SettingsToggleRow(
-                            icon: "waveform",
-                            title: "Live activity",
-                            subtitle: "Real-time tool activity for agents",
-                            isOn: $viewModel.settings.showAgentLiveState
-                        )
-                        SettingsToggleRow(
-                            icon: "rectangle.compress.vertical",
-                            title: "Compact rows",
-                            subtitle: "Smaller rows in the agent list",
-                            isOn: $viewModel.settings.compactAgentRows
-                        )
-                    }
-
-                    SettingsSection(title: "Integrations") {
-                        AppConnectionRow(viewModel: viewModel, appType: "gmail", displayName: "Gmail", icon: "envelope.fill")
-                        AppConnectionRow(viewModel: viewModel, appType: "googlecalendar", displayName: "Google Calendar", icon: "calendar")
-                        AppConnectionRow(viewModel: viewModel, appType: "googledocs", displayName: "Google Docs", icon: "doc.text.fill")
-                        AppConnectionRow(viewModel: viewModel, appType: "github", displayName: "GitHub", icon: "chevron.left.forwardslash.chevron.right")
-                    }
-
-                    Spacer().frame(height: DN.spaceMD)
+            Section("Provider") {
+                defaultProviderRow
+                ForEach(["anthropic", "openai", "openrouter"], id: \.self) { providerType in
+                    ProviderRow(viewModel: viewModel, providerType: providerType)
                 }
             }
+
+            Section {
+                ForEach(PinnedWidget.allCases, id: \.rawValue) { widget in
+                    widgetToggleRow(widget)
+                }
+            } header: {
+                Text("Widgets")
+            } footer: {
+                Text("Pin up to 3 widgets to your overview.")
+            }
+
+            Section("Display") {
+                Toggle("Dot grid", isOn: $viewModel.settings.showDotGrid)
+                if viewModel.settings.showDotGrid {
+                    LabeledContent("Accent color") {
+                        ColorPicker(
+                            "",
+                            selection: Binding(
+                                get: { viewModel.settings.dotGridSwiftColor },
+                                set: { newValue in
+                                    viewModel.settings.dotGridColor = newValue.toHexString()
+                                }
+                            ),
+                            supportsOpacity: false
+                        )
+                        .labelsHidden()
+                    }
+                    LabeledContent("Grid opacity") {
+                        HStack {
+                            Slider(value: $viewModel.settings.dotGridOpacity, in: 0.1...1.0)
+                                .frame(maxWidth: 140)
+                            Text("\(Int(viewModel.settings.dotGridOpacity * 100))%")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .font(.caption)
+                        }
+                    }
+                }
+            }
+
+            Section("Agents") {
+                Toggle("Live activity", isOn: $viewModel.settings.showAgentLiveState)
+                Toggle("Compact rows", isOn: $viewModel.settings.compactAgentRows)
+            }
+
+            Section("Integrations") {
+                AppConnectionRow(viewModel: viewModel, appType: "gmail", displayName: "Gmail", icon: "envelope.fill")
+                AppConnectionRow(viewModel: viewModel, appType: "googlecalendar", displayName: "Google Calendar", icon: "calendar")
+                AppConnectionRow(viewModel: viewModel, appType: "googledocs", displayName: "Google Docs", icon: "doc.text.fill")
+                AppConnectionRow(viewModel: viewModel, appType: "github", displayName: "GitHub", icon: "chevron.left.forwardslash.chevron.right")
+            }
         }
-        .onAppear {
-            viewModel.loadProviderConfigs()
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .onAppear { viewModel.loadProviderConfigs() }
+    }
+
+    // MARK: - Default provider row
+
+    private var defaultProviderRow: some View {
+        let isUsingDefault = !viewModel.providerConfigs.contains { $0.isActive }
+        return HStack {
+            Label("Default", systemImage: "server.rack")
+            Spacer()
+            if isUsingDefault {
+                Text("Active")
+                    .foregroundStyle(.green)
+                    .font(.callout)
+            } else {
+                Button("Use") {
+                    viewModel.deactivateAllProviders()
+                }
+                .buttonStyle(.glass)
+                .controlSize(.small)
+                .tint(.clear)
+            }
         }
     }
+
+    // MARK: - Widget toggle row
 
     @ViewBuilder
     private func widgetToggleRow(_ widget: PinnedWidget) -> some View {
         let isPinned = viewModel.settings.pinnedWidgets.contains(widget)
         let atMax = viewModel.settings.pinnedWidgets.count >= 3
-        SettingsToggleRow(
-            icon: widget.icon,
-            title: widget.label,
-            subtitle: widgetSubtitle(widget),
-            isOn: Binding(
-                get: { viewModel.settings.pinnedWidgets.contains(widget) },
-                set: { newValue in
-                    withAnimation(DN.transition) {
-                        if !newValue {
-                            viewModel.settings.pinnedWidgets.removeAll { $0 == widget }
-                        } else if viewModel.settings.pinnedWidgets.count < 3 {
-                            viewModel.settings.pinnedWidgets.append(widget)
-                        }
+        Toggle(isOn: Binding(
+            get: { isPinned },
+            set: { newValue in
+                withAnimation(DN.transition) {
+                    if !newValue {
+                        viewModel.settings.pinnedWidgets.removeAll { $0 == widget }
+                    } else if viewModel.settings.pinnedWidgets.count < 3 {
+                        viewModel.settings.pinnedWidgets.append(widget)
                     }
                 }
-            )
-        )
-        .opacity(!isPinned && atMax ? 0.4 : 1.0)
-    }
-
-    private func widgetSubtitle(_ w: PinnedWidget) -> String {
-        switch w {
-        case .calendar: return "Date grid on overview"
-        case .music: return "Now playing controls"
-        case .ram: return "Memory usage gauge"
-        case .disk: return "Storage usage ring"
-        case .network: return "Upload & download speeds"
-        case .uptime: return "System uptime counter"
-        case .processes: return "Running process count"
-        }
-    }
-}
-
-// MARK: - Settings Components
-
-// MARK: - App Connection Row (Generic)
-
-struct DefaultProviderRow: View {
-    @ObservedObject var viewModel: NotchViewModel
-
-    private var isActive: Bool {
-        !viewModel.providerConfigs.contains { $0.isActive }
-    }
-
-    var body: some View {
-        SettingsRowChrome(icon: "server.rack", iconTint: iconTint(for: "server.rack"), title: "Default", subtitle: "Server API key") {
-            if isActive {
-                StatusBadge(text: "Active", color: .green)
-            } else {
-                SecondaryActionButton(label: "Use") {
-                    viewModel.deactivateAllProviders()
-                }
             }
+        )) {
+            Label(widget.label, systemImage: widget.icon)
         }
+        .disabled(!isPinned && atMax)
     }
 }
 
-struct StatusBadge: View {
-    let text: String
-    let color: Color
-    var body: some View {
-        Text(text)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(
-                Capsule(style: .continuous).fill(color.opacity(0.14))
-            )
-    }
-}
-
-struct SecondaryActionButton: View {
-    let label: String
-    var tint: Color = .white
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(tint)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule(style: .continuous).fill(Color.white.opacity(0.10))
-                )
-                .overlay(
-                    Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 0.6)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-}
+// MARK: - Provider row (BYOK)
 
 struct ProviderRow: View {
     @ObservedObject var viewModel: NotchViewModel
@@ -847,147 +771,89 @@ struct ProviderRow: View {
         ProviderConfig.defaultModels[providerType] ?? ""
     }
 
-    private var providerTint: Color {
-        switch providerType {
-        case "anthropic": return Color(hex: 0xD97757)
-        case "openai": return Color(hex: 0x10A37F)
-        case "openrouter": return .purple
-        default: return .blue
-        }
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header row
-            SettingsRowChrome(
-                icon: icon,
-                iconTint: providerTint,
-                title: displayName,
-                subtitle: isConfigured ? (isActive ? "Active · \(config?.modelId ?? "")" : config?.modelId ?? "") : "Not configured"
-            ) {
-                HStack(spacing: 6) {
-                    if isActive { StatusBadge(text: "Active", color: .green) }
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(DN.textDisabled)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 10) {
+                LabeledContent("API key") {
+                    SecureField("sk-…", text: $apiKey)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
                 }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                withAnimation(DN.transition) {
-                    isExpanded.toggle()
-                    if isExpanded && modelId.isEmpty {
-                        modelId = config?.modelId ?? defaultModel
-                    }
+
+                LabeledContent("Model") {
+                    TextField(defaultModel, text: $modelId)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
                 }
-            }
 
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 10) {
-                    formField(label: "API KEY", systemImage: "key.fill") {
-                        SecureField("sk-…", text: $apiKey)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(DN.textPrimary)
+                HStack {
+                    Button(isVerifying ? "Verifying…" : (isVerified && apiKey.isEmpty ? "Verified" : "Verify")) {
+                        guard !apiKey.isEmpty else { return }
+                        let model = modelId.isEmpty ? defaultModel : modelId
+                        viewModel.verifyProviderKey(provider: providerType, apiKey: apiKey, modelId: model)
                     }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .tint(.clear)
+                    .disabled(apiKey.isEmpty || isVerifying)
 
-                    formField(label: "MODEL", systemImage: "cube.fill") {
-                        TextField(defaultModel, text: $modelId)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(DN.textPrimary)
+                    Button("Save") {
+                        guard !apiKey.isEmpty else { return }
+                        let model = modelId.isEmpty ? defaultModel : modelId
+                        viewModel.saveProviderConfig(provider: providerType, apiKey: apiKey, modelId: model)
+                        apiKey = ""
                     }
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.small)
+                    .tint(.accentColor)
+                    .disabled(apiKey.isEmpty)
 
-                    HStack(spacing: 8) {
-                        SecondaryActionButton(label: isVerifying ? "Verifying…" : (isVerified && apiKey.isEmpty ? "Verified" : "Verify"),
-                                              tint: isVerified && apiKey.isEmpty ? .green : .white) {
-                            guard !apiKey.isEmpty else { return }
-                            let model = modelId.isEmpty ? defaultModel : modelId
-                            viewModel.verifyProviderKey(provider: providerType, apiKey: apiKey, modelId: model)
-                        }
-                        .disabled(apiKey.isEmpty || isVerifying)
-                        .opacity(apiKey.isEmpty && !isVerified ? 0.4 : 1)
+                    Spacer()
 
-                        PrimaryActionButton(label: "Save") {
-                            guard !apiKey.isEmpty else { return }
-                            let model = modelId.isEmpty ? defaultModel : modelId
-                            viewModel.saveProviderConfig(provider: providerType, apiKey: apiKey, modelId: model)
+                    if isConfigured {
+                        Button(role: .destructive) {
+                            viewModel.deleteProviderConfig(provider: providerType)
                             apiKey = ""
+                            modelId = defaultModel
+                        } label: {
+                            Text("Delete")
                         }
-                        .disabled(apiKey.isEmpty)
-                        .opacity(apiKey.isEmpty ? 0.4 : 1)
-
-                        Spacer()
-
-                        if isConfigured {
-                            SecondaryActionButton(label: "Delete", tint: DN.accent) {
-                                viewModel.deleteProviderConfig(provider: providerType)
-                                apiKey = ""
-                                modelId = defaultModel
-                            }
-                        }
-                    }
-
-                    if let error = error {
-                        Text(error)
-                            .font(.system(size: 11))
-                            .foregroundColor(DN.accent)
-                            .lineLimit(2)
+                        .buttonStyle(.glass)
+                        .controlSize(.small)
+                        .tint(.clear)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
-                .padding(.top, 4)
-                .transition(.opacity)
-            }
-        }
-    }
 
-    @ViewBuilder
-    private func formField<Content: View>(label: String, systemImage: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(DN.textDisabled)
-                .tracking(0.4)
-            HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 10))
-                    .foregroundColor(DN.textDisabled)
-                content()
+                if let error = error {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.black.opacity(0.30))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.6)
-            )
+            .padding(.top, 4)
+            .onAppear {
+                if modelId.isEmpty { modelId = config?.modelId ?? defaultModel }
+            }
+        } label: {
+            HStack {
+                Label(displayName, systemImage: icon)
+                Spacer()
+                if isActive {
+                    Text("Active")
+                        .foregroundStyle(.green)
+                        .font(.callout)
+                } else if isConfigured {
+                    Text(config?.modelId ?? "")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+            }
         }
     }
 }
 
-struct PrimaryActionButton: View {
-    let label: String
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule(style: .continuous).fill(Color.accentColor.opacity(0.85))
-                )
-        }
-        .buttonStyle(.plain)
-    }
-}
+// MARK: - App connection row (OAuth)
 
 struct AppConnectionRow: View {
     @ObservedObject var viewModel: NotchViewModel
@@ -1000,268 +866,48 @@ struct AppConnectionRow: View {
     private var error: String? { viewModel.appError[appType] ?? nil }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SettingsRowChrome(
-                icon: icon,
-                iconTint: iconTint(for: icon),
-                title: displayName,
-                subtitle: isLoading ? "Checking…" : (isConnected ? "Connected" : "Not connected")
-            ) {
-                if isLoading {
-                    ProgressView().controlSize(.small)
-                } else {
-                    HStack(spacing: 6) {
-                        if error != nil && !isConnected {
-                            SecondaryActionButton(label: "Reset", tint: DN.warning) {
-                                viewModel.resetApp(appType)
-                            }
-                        }
-                        if isConnected {
-                            SecondaryActionButton(label: "Disconnect", tint: DN.accent) {
-                                viewModel.disconnectApp(appType)
-                            }
-                        } else {
-                            PrimaryActionButton(label: "Connect") {
-                                viewModel.connectApp(appType)
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let error = error {
-                Text(error)
-                    .font(.system(size: 11))
-                    .foregroundColor(DN.accent)
-                    .lineLimit(2)
-                    .padding(.top, 2)
-                    .padding(.bottom, 8)
-                    .padding(.horizontal, 46)
-            }
-        }
-        .onAppear {
-            viewModel.checkAppStatus(appType)
-        }
-    }
-}
-
-// Apple System Settings-style section: header label above an `insetGrouped` glass card.
-struct SettingsSection<Content: View>: View {
-    let title: String
-    var footer: String? = nil
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(DN.textSecondary)
-                .padding(.leading, 4)
-
-            VStack(spacing: 0) {
-                _SettingsRowList { content }
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.6)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            if let footer = footer {
-                Text(footer)
-                    .font(.system(size: 10))
-                    .foregroundColor(DN.textDisabled)
-                    .padding(.leading, 4)
-                    .padding(.top, 2)
-            }
-        }
-    }
-}
-
-// Helper that puts hairline dividers between rows. We can't easily inject between
-// arbitrary child views, so the variadic build is approximated with VStack+overlay
-// hairlines in the rows themselves where needed. Keep this transparent passthrough
-// for now.
-struct _SettingsRowList<Content: View>: View {
-    @ViewBuilder let content: () -> Content
-    var body: some View { content() }
-}
-
-// Apple-style row: tinted square icon tile + title/subtitle + control on trailing edge.
-struct SettingsRowChrome<Trailing: View>: View {
-    let icon: String
-    var iconTint: Color = .blue
-    let title: String
-    var subtitle: String? = nil
-    let trailing: () -> Trailing
-
-    init(icon: String, iconTint: Color = .blue, title: String, subtitle: String? = nil, @ViewBuilder trailing: @escaping () -> Trailing) {
-        self.icon = icon
-        self.iconTint = iconTint
-        self.title = title
-        self.subtitle = subtitle
-        self.trailing = trailing
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Tinted icon tile (System Settings style)
-            ZStack {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(iconTint.gradient)
-                    .frame(width: 22, height: 22)
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-            }
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 13))
-                    .foregroundColor(DN.textPrimary)
-                if let subtitle = subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 11))
-                        .foregroundColor(DN.textDisabled)
-                        .lineLimit(1)
-                }
-            }
-
+        HStack {
+            Label(displayName, systemImage: icon)
             Spacer()
-
-            trailing()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Color.white.opacity(0.06))
-                .frame(height: 0.5)
-                .padding(.leading, 46)
-        }
-    }
-}
-
-private func iconTint(for icon: String) -> Color {
-    switch icon {
-    case "bubble.left.and.text.bubble.right": return .blue
-    case "arrow.counterclockwise": return .indigo
-    case "lock.open": return .gray
-    case "server.rack": return .gray
-    case "circle.grid.3x3": return Color(red: 0.55, green: 0.55, blue: 0.95)
-    case "paintbrush": return .pink
-    case "circle.lefthalf.filled": return Color(red: 0.5, green: 0.5, blue: 0.55)
-    case "waveform": return .green
-    case "rectangle.compress.vertical": return .teal
-    case "envelope.fill": return .red
-    case "calendar": return .blue
-    case "doc.text.fill": return .blue
-    case "chevron.left.forwardslash.chevron.right": return Color(red: 0.18, green: 0.18, blue: 0.2)
-    default: return .blue
-    }
-}
-
-struct SettingsToggleRow: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    @Binding var isOn: Bool
-
-    var body: some View {
-        SettingsRowChrome(icon: icon, iconTint: iconTint(for: icon), title: title, subtitle: subtitle) {
-            Toggle("", isOn: $isOn)
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .labelsHidden()
-                .tint(.green)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture { isOn.toggle() }
-    }
-}
-
-struct SettingsSliderRow: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    @Binding var value: Double
-    var range: ClosedRange<Double> = 0...1
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(iconTint(for: icon).gradient)
-                    .frame(width: 22, height: 22)
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(.system(size: 13))
-                        .foregroundColor(DN.textPrimary)
-                    Spacer()
-                    Text("\(Int(value * 100))%")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(DN.textSecondary)
-                        .monospacedDigit()
+            if isLoading {
+                ProgressView().controlSize(.small)
+            } else if isConnected {
+                Text("Connected")
+                    .foregroundStyle(.green)
+                    .font(.callout)
+                Button("Disconnect") { viewModel.disconnectApp(appType) }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .tint(.clear)
+            } else {
+                if error != nil {
+                    Button("Reset") { viewModel.resetApp(appType) }
+                        .buttonStyle(.glass)
+                        .controlSize(.small)
+                        .tint(.clear)
                 }
-                Slider(value: $value, in: range)
-                    .controlSize(.mini)
-                    .tint(.white.opacity(0.85))
+                Button("Connect") { viewModel.connectApp(appType) }
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.small)
+                    .tint(.accentColor)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Color.white.opacity(0.06))
-                .frame(height: 0.5)
-                .padding(.leading, 46)
-        }
+        .onAppear { viewModel.checkAppStatus(appType) }
     }
 }
 
-struct SettingsColorRow: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    @Binding var selectedHex: String
+// MARK: - Color hex helper
 
-    private let presets: [String] = [
-        "#FFFFFF", "#D97757", "#00B4D8", "#D71921",
-        "#4A9E5C", "#D4A843", "#A855F7", "#10A37F",
-    ]
-
-    var body: some View {
-        SettingsRowChrome(icon: icon, iconTint: iconTint(for: icon), title: title, subtitle: subtitle) {
-            HStack(spacing: 6) {
-                ForEach(presets, id: \.self) { hex in
-                    let isSelected = selectedHex == hex
-                    Button(action: { withAnimation(DN.transition) { selectedHex = hex } }) {
-                        Circle()
-                            .fill(Color(hex: UInt32(hex.dropFirst(), radix: 16) ?? 0xFFFFFF))
-                            .frame(width: 16, height: 16)
-                            .overlay(
-                                Circle()
-                                    .strokeBorder(Color.white.opacity(isSelected ? 0.95 : 0.18), lineWidth: isSelected ? 1.5 : 0.5)
-                            )
-                            .scaleEffect(isSelected ? 1.1 : 1.0)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
+private extension Color {
+    func toHexString() -> String {
+        #if os(macOS)
+        let ns = NSColor(self).usingColorSpace(.sRGB) ?? .white
+        let r = Int(round(ns.redComponent * 255))
+        let g = Int(round(ns.greenComponent * 255))
+        let b = Int(round(ns.blueComponent * 255))
+        return String(format: "#%02X%02X%02X", r, g, b)
+        #else
+        return "#FFFFFF"
+        #endif
     }
 }

@@ -161,6 +161,17 @@ extension View {
     func glassCell(cornerRadius: CGFloat = 14) -> some View {
         glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
+
+    /// Plain content card — flat dark fill, no glass. Per Apple's Liquid Glass
+    /// guidance, content layers (lists, cards, chat bubbles) must NOT use glass —
+    /// only navigation/controls do. Use this for grouped content sections.
+    func contentCard(cornerRadius: CGFloat = 12) -> some View {
+        background(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
 }
 
 // MARK: - Set Toggle Helper
