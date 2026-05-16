@@ -338,31 +338,36 @@ struct NotchContentView: View {
                     viewModel.isChatInputActive = focused
                 }
                 .onSubmit { submitChat() }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Send button is ALWAYS present so the row height never changes.
-            // Disabled (inactive glass) until the user has typed something.
             sendButton
         }
         .padding(.horizontal, DN.spaceMD)
         .padding(.vertical, DN.spaceSM)
-        .glassEffect(.regular, in: .capsule)
+        .background(.regularMaterial, in: .capsule)
+        // Hit area covers the whole capsule, so clicking anywhere — not just
+        // on the placeholder glyph — focuses the field.
+        .contentShape(.capsule)
+        .onTapGesture { isChatInputFocused = true }
     }
 
     private var sendButton: some View {
         let enabled = !chatInputText.trimmingCharacters(in: .whitespaces).isEmpty
-        return Image(systemName: "arrow.up")
-            .font(.system(size: 11, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(width: 24, height: 24)
-            .glassEffect(
-                enabled ? Glass.regular.tint(DN.activeAccent) : Glass.regular,
-                in: .circle
-            )
-            .opacity(enabled ? 1.0 : 0.45)
-            .contentShape(.circle)
-            .onTapGesture {
-                if enabled { submitChat() }
-            }
+        return ZStack {
+            Circle()
+                .fill(enabled ? DN.activeAccent : Color.white.opacity(0.10))
+            Circle()
+                .strokeBorder(Color.white.opacity(enabled ? 0.30 : 0.18), lineWidth: 0.6)
+            Image(systemName: "arrow.up")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 26, height: 26)
+        .opacity(enabled ? 1.0 : 0.55)
+        .contentShape(.circle)
+        .onTapGesture {
+            if enabled { submitChat() }
+        }
     }
 
     private func submitChat() {

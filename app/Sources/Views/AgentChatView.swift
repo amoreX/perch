@@ -381,34 +381,42 @@ struct AgentChatView: View {
 
     @State private var messageText: String = ""
 
+    @FocusState private var isMessageFocused: Bool
+
     private var inputBar: some View {
         HStack(spacing: DN.spaceSM) {
             TextField("Message agent", text: $messageText)
                 .textFieldStyle(.plain)
+                .focused($isMessageFocused)
                 .onSubmit { sendMessage() }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             sendButton
         }
         .padding(.horizontal, DN.spaceMD)
         .padding(.vertical, DN.spaceSM)
-        .glassEffect(.regular, in: .capsule)
+        .background(.regularMaterial, in: .capsule)
+        .contentShape(.capsule)
+        .onTapGesture { isMessageFocused = true }
     }
 
     private var sendButton: some View {
         let enabled = !messageText.trimmingCharacters(in: .whitespaces).isEmpty
-        return Image(systemName: "arrow.up")
-            .font(.system(size: 11, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(width: 24, height: 24)
-            .glassEffect(
-                enabled ? Glass.regular.tint(DN.activeAccent) : Glass.regular,
-                in: .circle
-            )
-            .opacity(enabled ? 1.0 : 0.45)
-            .contentShape(.circle)
-            .onTapGesture {
-                if enabled { sendMessage() }
-            }
+        return ZStack {
+            Circle()
+                .fill(enabled ? DN.activeAccent : Color.white.opacity(0.10))
+            Circle()
+                .strokeBorder(Color.white.opacity(enabled ? 0.30 : 0.18), lineWidth: 0.6)
+            Image(systemName: "arrow.up")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 26, height: 26)
+        .opacity(enabled ? 1.0 : 0.55)
+        .contentShape(.circle)
+        .onTapGesture {
+            if enabled { sendMessage() }
+        }
     }
 
     private func sendMessage() {
