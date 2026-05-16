@@ -82,10 +82,12 @@ struct NotchShellView: View {
                 style: .continuous
             )
         )
-        // Shoulders sit OUTSIDE the clip so they can extend left/right of
-        // the notch shape and visually fillet the menu-bar junction.
+        // Shoulders sit OUTSIDE the clip so they extend left/right into the
+        // menu-bar zone and fillet the panel/menu-bar junction.
         .overlay(alignment: .top) {
-            shoulders
+            if expanded && !viewModel.isPeeking {
+                shoulders
+            }
         }
         .onHover { hovering in
             viewModel.mouseInContent = hovering
@@ -122,40 +124,35 @@ struct NotchShellView: View {
         return shape.fill(Color.black)
     }
 
-    // Anti-aliased "shoulders" that bevel the junction between the notch's
-    // rounded bottom corners and the flat menu-bar edge above. Each shoulder
-    // is a small black tile with one concave rounded corner carved out, sat
-    // flush against the OUTSIDE of the notch's bottom corner — the carved
-    // arc curves outward so the notch+menu-bar meeting reads as one smooth
-    // fillet.
+    // Shoulders flank the dropdown panel's top-left and top-right corners.
+    // They sit in the menu-bar zone, each with a concave bite in its
+    // bottom-inner corner so the menu bar appears to fillet smoothly down
+    // into the panel.
     //
-    //  ┌── menu bar ─────────────┐    ┌── menu bar ─────────────┐
-    //  │                         │    │                         │
-    //  │         ╲___notch___╱   │ →  │      ╲ ╲___notch___╱ ╱  │
-    //  │                         │    │       └─ shoulders ─┘   │
+    //   ┌── menu bar ───╮       ╭── menu bar ───┐
+    //                    ╲     ╱
+    //                     │ ┌─┴─┐ │
+    //                     └─┤   ├─┘
+    //                       │ panel │
     //
-    // Left shoulder: the carved corner is BOTTOM-RIGHT (arc curls toward
-    //   the notch's outside bottom-left corner).
-    // Right shoulder: mirror — carved corner is BOTTOM-LEFT.
+    // Left shoulder carved at BOTTOM-RIGHT, right shoulder at BOTTOM-LEFT.
     private var shoulders: some View {
         let size = bottomRadius
-        return ZStack(alignment: .topLeading) {
-            // Left shoulder, anchored to the parent's top-leading edge and
-            // shifted LEFT by its own width so it sits just outside the notch.
-            NotchShoulder(corner: .bottomRight)
-                .fill(Color.black)
-                .frame(width: size, height: size)
-                .offset(x: -size + 0.5, y: 0)
-
-            // Right shoulder, pushed all the way to the trailing edge of the
-            // notch (shapeWidth) and then OUTSIDE by its own width.
-            NotchShoulder(corner: .bottomLeft)
-                .fill(Color.black)
-                .frame(width: size, height: size)
-                .offset(x: shapeWidth - 0.5, y: 0)
-        }
-        .frame(width: shapeWidth, alignment: .topLeading)
-        .allowsHitTesting(false)
+        return Color.clear
+            .frame(width: shapeWidth, height: size)
+            .overlay(alignment: .topLeading) {
+                NotchShoulder(corner: .bottomRight)
+                    .fill(Color.black)
+                    .frame(width: size, height: size)
+                    .offset(x: -size + 0.5, y: 0)
+            }
+            .overlay(alignment: .topTrailing) {
+                NotchShoulder(corner: .bottomLeft)
+                    .fill(Color.black)
+                    .frame(width: size, height: size)
+                    .offset(x: size - 0.5, y: 0)
+            }
+            .allowsHitTesting(false)
     }
 
     // MARK: - Expanded Content
@@ -335,17 +332,13 @@ struct NotchShoulder: Shape {
 
     let corner: Corner
 
-    // Each shoulder is a black square with one TOP-INNER corner replaced
-    // by a CONCAVE quarter-circle bite. The bite's circular arc continues
-    // the notch's rounded outside corner outward into the menu bar so the
-    // two curves form a single continuous tangent.
+    // Black tile, one of its BOTTOM corners carved by a concave quarter-
+    // circle. Sits in the menu-bar zone flanking the dropdown panel so the
+    // menu bar visually fillets down into the panel's top corner.
     //
     // Coords: y=0 top, y=h bottom.
-    //
-    // To make a CONCAVE corner (a bite, not a fillet), the arc's CENTER
-    // sits at the *inner* corner of the bite (one quadrant away from the
-    // physical corner being carved), so the arc curves AWAY from the
-    // square's body.
+    // Concave bite: arc center sits at the INNER corner of the bite (one
+    // radius diagonally inward from the physical corner being carved).
     func path(in rect: CGRect) -> Path {
         var p = Path()
         let w = rect.width
@@ -354,52 +347,51 @@ struct NotchShoulder: Shape {
 
         switch corner {
         case .bottomRight:
-            // LEFT shoulder. Concave bite in TOP-RIGHT.
-            //   ┌─────╮      ← bite: curve dips down-then-right
-            //   │      ╲
-            //   │       │
-            //   │       │
-            //   └───────┘
-            // Arc center = (w - r, r) (inner corner of the bite).
-            // Start angle 270° (pointing UP from center → hits (w-r, 0)).
-            // End   angle   0° (pointing RIGHT      → hits (w,   r)).
-            // SwiftUI uses a flipped y-axis, so we pass clockwise: false
-            // to get the geometrically clockwise sweep that produces the
-            // concave bite.
+            // LEFT shoulder. Concave bite in BOTTOM-RIGHT.
+            //   ┌──────────┐
+            //   │           │
+            //   │           │
+            //   │            ╲   ← bite curves down-and-left, hugging the
+            //   └─────────╮  ╲     panel's top-left rounded corner outside
+            //
+            // Arc center = (w - r, h - r). Sweep from (w, h-r) — right edge
+            // — to (w-r, h) — bottom edge. clockwise:false in SwiftUI's
+            // y-down system produces the visually clockwise sweep that
+            // carves a concave bite.
             p.move(to: CGPoint(x: 0, y: 0))                   // top-left
-            p.addLine(to: CGPoint(x: w - r, y: 0))            // top edge to start of bite
+            p.addLine(to: CGPoint(x: w, y: 0))                // top-right
+            p.addLine(to: CGPoint(x: w, y: h - r))            // down right edge to start of bite
             p.addArc(
-                center: CGPoint(x: w - r, y: r),
+                center: CGPoint(x: w - r, y: h - r),
                 radius: r,
-                startAngle: .degrees(270),
-                endAngle: .degrees(0),
+                startAngle: .degrees(0),                      // (w, h-r) — pointing +x from center
+                endAngle: .degrees(90),                       // (w-r, h) — pointing +y from center
                 clockwise: false
             )
-            p.addLine(to: CGPoint(x: w, y: h))                // right edge down to bottom-right
             p.addLine(to: CGPoint(x: 0, y: h))                // bottom-left
             p.closeSubpath()
 
         case .bottomLeft:
-            // RIGHT shoulder. Concave bite in TOP-LEFT.  (mirror)
-            //   ╭─────┐
-            //  ╱      │
-            //  │      │
-            //  │      │
-            //  └──────┘
-            // Arc center = (r, r).
-            // Start angle 180° (LEFT  → hits (0, r)).
-            // End   angle 270° (UP    → hits (r, 0)).
+            // RIGHT shoulder. Concave bite in BOTTOM-LEFT (mirror).
+            //         ┌──────────┐
+            //         │          │
+            //         │          │
+            //        ╱            │
+            //       ╱  ╭─────────┘
+            //
+            // Arc center = (r, h - r). Sweep from (0, h-r) — left edge —
+            // to (r, h) — bottom edge.
             p.move(to: CGPoint(x: w, y: 0))                   // top-right
-            p.addLine(to: CGPoint(x: w, y: h))                // right edge down
-            p.addLine(to: CGPoint(x: 0, y: h))                // bottom-left
-            p.addLine(to: CGPoint(x: 0, y: r))                // left edge up to start of bite
+            p.addLine(to: CGPoint(x: 0, y: 0))                // top-left
+            p.addLine(to: CGPoint(x: 0, y: h - r))            // down left edge to start of bite
             p.addArc(
-                center: CGPoint(x: r, y: r),
+                center: CGPoint(x: r, y: h - r),
                 radius: r,
-                startAngle: .degrees(180),
-                endAngle: .degrees(270),
-                clockwise: false
+                startAngle: .degrees(180),                    // (0, h-r) — pointing -x from center
+                endAngle: .degrees(90),                       // (r, h)  — pointing +y from center
+                clockwise: true                               // sweep the short way (visually clockwise in screen coords)
             )
+            p.addLine(to: CGPoint(x: w, y: h))                // bottom-right
             p.closeSubpath()
         }
         return p
