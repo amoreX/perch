@@ -113,44 +113,9 @@ struct NotchShellView: View {
             style: .continuous
         )
 
-        return ZStack {
-            // Tahoe-style base: liquid glass material
-            shape.fill(.ultraThinMaterial)
-
-            // Subtle dark tint — much lighter than before so glass blur is visible.
-            // Collapsed: fully opaque so the physical notch reads as solid black.
-            shape.fill(DN.black.opacity(expanded ? 0.32 : 0.95))
-
-            // Top sheen
-            shape.fill(
-                LinearGradient(
-                    colors: [Color.white.opacity(expanded ? 0.10 : 0.02), Color.white.opacity(0.0)],
-                    startPoint: .top, endPoint: .center
-                )
-            )
-
-            // Bottom rim shadow for depth
-            shape.fill(
-                LinearGradient(
-                    colors: [Color.clear, Color.black.opacity(expanded ? 0.30 : 0.0)],
-                    startPoint: .center, endPoint: .bottom
-                )
-            )
-        }
-        .overlay(
-            // Rim light stroke — only when expanded so the collapsed bar still reads as the physical notch
-            shape.stroke(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(expanded ? 0.16 : 0.0),
-                        Color.white.opacity(expanded ? 0.04 : 0.0),
-                        Color.white.opacity(expanded ? 0.10 : 0.0),
-                    ],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                ),
-                lineWidth: 0.8
-            )
-        )
+        // Pitch black, always. No material, no tint stack, no rim light —
+        // the shell is the physical notch extended, not a translucent surface.
+        return shape.fill(Color.black)
     }
 
     // MARK: - Expanded Content
@@ -220,9 +185,10 @@ struct NotchShellView: View {
     // Both side groups sit on the same baseline (vertically centered to notchH)
     // and all controls are pill-shaped with a single height to share a baseline.
 
-    // Top bar: vanilla SwiftUI Buttons styled with .buttonStyle(.glass) /
-    // .glassProminent inside GlassEffectContainers per Apple's Liquid Glass
-    // guidance (macOS 26+). No hand-painted backgrounds, strokes, or gradients.
+    // Top bar: discrete capsule glass buttons, never .glassProminent (its
+    // automatic foreground inversion turns active text black). Active state
+    // is conveyed by a brighter tint on the same .glass style so the text
+    // color and capsule shape stay constant across states.
     // Layout: [pad] [LEFT CLUSTER] [grow] [physical notch] [grow] [RIGHT CLUSTER] [pad]
     private var expandedTopBar: some View {
         let sideInset: CGFloat = DN.spaceMD
@@ -230,15 +196,15 @@ struct NotchShellView: View {
         return HStack(alignment: .center, spacing: 0) {
             Color.clear.frame(width: sideInset)
 
-            // Left cluster — Home / Agents
-            GlassEffectContainer(spacing: 8) {
-                HStack(spacing: DN.spaceXS) {
-                    topBarTab("Home", isActive: viewModel.viewState == .overview) {
-                        withAnimation(DN.transition) { viewModel.viewState = .overview }
-                    }
-                    topBarTab("Agents", isActive: viewModel.isInTaskOrChat) {
-                        withAnimation(DN.transition) { viewModel.viewState = .taskList }
-                    }
+            // Left cluster — Home / Agents. spacing: 6 leaves a visible gap
+            // between capsules; no GlassEffectContainer so they don't morph
+            // into one continuous blob.
+            HStack(spacing: 6) {
+                topBarTab("Home", isActive: viewModel.viewState == .overview) {
+                    withAnimation(DN.transition) { viewModel.viewState = .overview }
+                }
+                topBarTab("Agents", isActive: viewModel.isInTaskOrChat) {
+                    withAnimation(DN.transition) { viewModel.viewState = .taskList }
                 }
             }
 
@@ -247,24 +213,22 @@ struct NotchShellView: View {
             Spacer(minLength: DN.spaceSM)
 
             // Right cluster — Stats / Bell / Settings
-            GlassEffectContainer(spacing: 8) {
-                HStack(spacing: DN.spaceXS) {
-                    topBarTab("Stats", isActive: viewModel.viewState == .stats || viewModel.viewState == .processList) {
-                        withAnimation(DN.transition) { viewModel.viewState = .stats }
-                    }
-                    topBarIcon(
-                        viewModel.viewState == .notifications ? "bell.fill" : "bell",
-                        isActive: viewModel.viewState == .notifications,
-                        badge: viewModel.unreadCount > 0
-                    ) {
-                        withAnimation(DN.transition) { viewModel.viewState = .notifications }
-                    }
-                    topBarIcon(
-                        viewModel.viewState == .settings ? "gearshape.fill" : "gearshape",
-                        isActive: viewModel.viewState == .settings
-                    ) {
-                        withAnimation(DN.transition) { viewModel.viewState = .settings }
-                    }
+            HStack(spacing: 6) {
+                topBarTab("Stats", isActive: viewModel.viewState == .stats || viewModel.viewState == .processList) {
+                    withAnimation(DN.transition) { viewModel.viewState = .stats }
+                }
+                topBarIcon(
+                    viewModel.viewState == .notifications ? "bell.fill" : "bell",
+                    isActive: viewModel.viewState == .notifications,
+                    badge: viewModel.unreadCount > 0
+                ) {
+                    withAnimation(DN.transition) { viewModel.viewState = .notifications }
+                }
+                topBarIcon(
+                    viewModel.viewState == .settings ? "gearshape.fill" : "gearshape",
+                    isActive: viewModel.viewState == .settings
+                ) {
+                    withAnimation(DN.transition) { viewModel.viewState = .settings }
                 }
             }
 
@@ -273,36 +237,30 @@ struct NotchShellView: View {
         .frame(width: shapeWidth, height: notchH)
     }
 
-    @ViewBuilder
+    /// A pill-shaped text button. Active state is the same glass capsule with
+    /// a brighter white tint — never `.glassProminent` because Apple inverts
+    /// its foreground to black against light tints.
     private func topBarTab(_ label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
-        if isActive {
-            Button(label, action: action)
-                .buttonStyle(.glassProminent)
-                .controlSize(.small)
-                .tint(.white.opacity(0.18))
-        } else {
-            Button(label, action: action)
-                .buttonStyle(.glass)
-                .controlSize(.small)
-                .tint(.clear)
-        }
+        Button(label, action: action)
+            .buttonStyle(.glass)
+            .controlSize(.small)
+            .tint(isActive ? .white.opacity(0.22) : .clear)
+            .foregroundStyle(.white)
+            .clipShape(.capsule)
     }
 
-    @ViewBuilder
+    /// A pill-shaped icon button. Same active-state rules as topBarTab.
     private func topBarIcon(_ icon: String, isActive: Bool, badge: Bool = false, action: @escaping () -> Void) -> some View {
-        let label = Image(systemName: icon).symbolRenderingMode(.hierarchical)
-        ZStack(alignment: .topTrailing) {
-            if isActive {
-                Button(action: action) { label }
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.small)
-                    .tint(.white.opacity(0.18))
-            } else {
-                Button(action: action) { label }
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
-                    .tint(.clear)
-            }
+        Button(action: action) {
+            Image(systemName: icon)
+                .symbolRenderingMode(.hierarchical)
+        }
+        .buttonStyle(.glass)
+        .controlSize(.small)
+        .tint(isActive ? .white.opacity(0.22) : .clear)
+        .foregroundStyle(.white)
+        .clipShape(.capsule)
+        .overlay(alignment: .topTrailing) {
             if badge {
                 Circle()
                     .fill(.red)
