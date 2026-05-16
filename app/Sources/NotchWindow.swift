@@ -332,10 +332,10 @@ class NotchWindowController: NSObject {
 
     private func expand() {
         activePanel?.ignoresMouseEvents = false
-        // Drop shadow on while expanded so the notch reads as a floating
-        // surface, not part of the menu bar. Turned back off on collapse so
-        // the physical notch stays a flat black mask.
-        activePanel?.hasShadow = true
+        // Keep window shadow off — AppKit renders it above the screen edge
+        // as a hairline at the top of the notch shape. The drop shadow is
+        // drawn inside SwiftUI instead, where we can clip it to the bottom.
+        activePanel?.hasShadow = false
         viewModel.restoreOrResetView()
         // .nonactivatingPanel + makeKeyAndOrderFront makes the panel key —
         // so SwiftUI/AppKit renders controls in their proper active state —
@@ -357,7 +357,6 @@ class NotchWindowController: NSObject {
             guard let self = self else { return }
             if !self.viewModel.isExpanded {
                 self.activePanel?.ignoresMouseEvents = true
-                self.activePanel?.hasShadow = false
                 self.activePanel?.resignKey()
             }
         }

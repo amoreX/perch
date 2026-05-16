@@ -83,12 +83,23 @@ struct NotchShellView: View {
             )
         )
         // Shoulders sit OUTSIDE the clip so they extend left/right into the
-        // menu-bar zone and fillet the panel/menu-bar junction.
+        // menu-bar zone and fillet the panel/menu-bar junction. They're
+        // ALWAYS present (size animates from 0 when collapsed to bottomRadius
+        // when expanded), so the bevels grow with the same spring as the
+        // panel itself.
         .overlay(alignment: .top) {
-            if expanded && !viewModel.isPeeking {
-                shoulders
-            }
+            shoulders
         }
+        // Drop shadow that ONLY falls below the notch — never above —
+        // because there's no space above the menu bar and a top-shadow
+        // creates a hairline at the screen edge.
+        .compositingGroup()
+        .shadow(
+            color: Color.black.opacity(expanded ? 0.45 : 0),
+            radius: expanded ? 18 : 0,
+            x: 0,
+            y: expanded ? 8 : 0
+        )
         .onHover { hovering in
             viewModel.mouseInContent = hovering
             if viewModel.isPeeking {
@@ -137,7 +148,10 @@ struct NotchShellView: View {
     //
     // Left shoulder carved at BOTTOM-RIGHT, right shoulder at BOTTOM-LEFT.
     private var shoulders: some View {
-        let size = bottomRadius
+        // Shoulders only exist while expanded — collapse them to size 0
+        // when the notch is closed so the spring on bottomRadius / expanded
+        // also animates the shoulders in and out smoothly.
+        let size: CGFloat = expanded && !viewModel.isPeeking ? bottomRadius : 0
         return Color.clear
             .frame(width: shapeWidth, height: size)
             .overlay(alignment: .topLeading) {
