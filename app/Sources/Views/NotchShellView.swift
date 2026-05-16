@@ -10,19 +10,17 @@ struct NotchShellView: View {
     private var notchH: CGFloat { screen.notchHeight }
     private var expanded: Bool { viewModel.isExpanded }
 
+    // Single canonical expanded size — no per-view dimension change so view-switching
+    // never resizes the notch frame. Inner ScrollViews handle overflow.
+    static let expandedW: CGFloat = 540
+    static let expandedH: CGFloat = 320
+
     private var shapeWidth: CGFloat {
         if viewModel.isPeeking {
             return viewModel.peekHovering ? notchW + 200 : notchW + 140
         }
         if !expanded { return notchW }
-        switch viewModel.viewState {
-        case .taskList, .agentChat: return 540
-        case .processList: return 540
-        case .stats: return 520
-        case .settings: return 520
-        case .notifications: return 520
-        case .overview: return 520
-        }
+        return Self.expandedW
     }
 
     private var shapeHeight: CGFloat {
@@ -30,15 +28,7 @@ struct NotchShellView: View {
             return viewModel.peekHovering ? notchH + 80 : notchH + 28
         }
         if !expanded { return notchH }
-        switch viewModel.viewState {
-        case .overview: return notchH + 260
-        case .taskList: return notchH + 260
-        case .agentChat: return notchH + 320
-        case .stats: return notchH + 290
-        case .processList: return notchH + 320
-        case .settings: return notchH + 320
-        case .notifications: return notchH + 290
-        }
+        return notchH + Self.expandedH
     }
 
     private var bottomRadius: CGFloat {
@@ -72,17 +62,15 @@ struct NotchShellView: View {
                 expandedTopBar
                     .transition(.opacity)
 
+                // Cross-fade between views; the surrounding shape never changes size,
+                // so no layout reflow needed.
                 expandedContent
                     .padding(.top, notchH + 1)
                     .padding(.horizontal, DN.spaceMD)
-                    .padding(.bottom, DN.spaceSM)
+                    .padding(.bottom, DN.spaceMD)
                     .frame(width: shapeWidth, alignment: .top)
-                    .transition(
-                        .asymmetric(
-                            insertion: .scale(scale: 0.96, anchor: .top).combined(with: .opacity),
-                            removal: .opacity
-                        )
-                    )
+                    .id(viewModel.viewState.transitionKey)
+                    .transition(.opacity)
             }
         }
         .frame(width: shapeWidth, height: shapeHeight)
@@ -233,9 +221,16 @@ struct NotchShellView: View {
     // Both side groups sit on the same baseline (vertically centered to notchH)
     // and all controls are pill-shaped with a single height to share a baseline.
 
+    // Top bar: identical inset on both sides of the notch gap, no battery.
+    // Layout: [pad] [LEFT CLUSTER] [grow] [physical notch] [grow] [RIGHT CLUSTER] [pad]
     private var expandedTopBar: some View {
-        HStack(alignment: .center, spacing: 0) {
-            // Left tab cluster
+        let sideInset: CGFloat = DN.spaceMD
+
+        return HStack(alignment: .center, spacing: 0) {
+            // Left edge inset
+            Color.clear.frame(width: sideInset)
+
+            // Left cluster — flush to the left edge inset
             HStack(spacing: DN.spaceXS) {
                 pillTab(label: "Home", isActive: viewModel.viewState == .overview) {
                     withAnimation(DN.transition) {
@@ -248,13 +243,17 @@ struct NotchShellView: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.trailing, DN.spaceSM)
 
-            // Physical notch reserved gap
+            // Flexible spacer up to notch
+            Spacer(minLength: DN.spaceSM)
+
+            // Physical notch
             Color.clear.frame(width: notchW)
 
-            // Right cluster
+            // Flexible spacer after notch
+            Spacer(minLength: DN.spaceSM)
+
+            // Right cluster — flush to the right edge inset
             HStack(spacing: DN.spaceXS) {
                 pillTab(label: "Stats", isActive: viewModel.viewState == .stats || viewModel.viewState == .processList) {
                     withAnimation(DN.transition) {
@@ -282,37 +281,30 @@ struct NotchShellView: View {
                         viewModel.viewState = .settings
                     }
                 }
-
-                if viewModel.settings.showBattery {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.08))
-                        .frame(width: 1, height: 14)
-                        .padding(.horizontal, 2)
-                    BatteryView()
-                }
             }
-            .padding(.leading, DN.spaceSM)
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Right edge inset
+            Color.clear.frame(width: sideInset)
         }
         .frame(width: shapeWidth, height: notchH)
     }
 
-    // Unified pill: text + optional icon, single height baseline
+    // Unified pill — fixed metrics. Weight stays constant (so glyph never reflows),
+    // only color and background opacity change between states.
     private func pillTab(label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(DN.body(11, weight: isActive ? .semibold : .medium))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundColor(isActive ? DN.textDisplay : DN.textSecondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .frame(height: 22)
+                .padding(.horizontal, 12)
+                .frame(height: 24)
                 .background(
                     Capsule(style: .continuous)
-                        .fill(isActive ? Color.white.opacity(0.14) : Color.clear)
+                        .fill(Color.white.opacity(isActive ? 0.14 : 0.0))
                 )
                 .overlay(
                     Capsule(style: .continuous)
-                        .stroke(isActive ? DN.glassStrokeHi : Color.clear, lineWidth: 0.6)
+                        .strokeBorder(Color.white.opacity(isActive ? 0.16 : 0.0), lineWidth: 0.6)
                 )
                 .contentShape(Capsule())
         }
@@ -323,24 +315,25 @@ struct NotchShellView: View {
         Button(action: action) {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundColor(isActive ? DN.textDisplay : DN.textSecondary)
+                    .frame(width: 24, height: 24)
 
                 if badge {
                     Circle()
                         .fill(DN.accent)
                         .frame(width: 5, height: 5)
-                        .offset(x: 3, y: -2)
+                        .offset(x: 2, y: -2)
                 }
             }
-            .frame(width: 22, height: 22)
+            .frame(width: 24, height: 24)
             .background(
                 Capsule(style: .continuous)
-                    .fill(isActive ? Color.white.opacity(0.14) : Color.clear)
+                    .fill(Color.white.opacity(isActive ? 0.14 : 0.0))
             )
             .overlay(
                 Capsule(style: .continuous)
-                    .stroke(isActive ? DN.glassStrokeHi : Color.clear, lineWidth: 0.6)
+                    .strokeBorder(Color.white.opacity(isActive ? 0.16 : 0.0), lineWidth: 0.6)
             )
             .contentShape(Capsule())
         }
@@ -454,41 +447,29 @@ struct NotificationsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DN.spaceSM) {
             HStack {
-                Text("NOTIFICATIONS")
-                    .font(DN.label(10))
-                    .tracking(1.5)
-                    .foregroundColor(DN.textSecondary)
+                Text("Notifications")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(DN.textDisplay)
 
                 Spacer()
 
                 if viewModel.unreadCount > 0 {
-                    Button(action: { viewModel.markAllRead() }) {
-                        Text("MARK ALL READ")
-                            .font(DN.label(7))
-                            .tracking(0.8)
-                            .foregroundColor(DN.textDisabled)
-                            .padding(.horizontal, DN.spaceSM)
-                            .padding(.vertical, 3)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(DN.border, lineWidth: 1)
-                            )
+                    SecondaryActionButton(label: "Mark all read") {
+                        viewModel.markAllRead()
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.bottom, DN.spaceXS)
 
             if viewModel.notifications.isEmpty {
-                VStack(spacing: DN.spaceSM) {
-                    Spacer().frame(height: DN.spaceLG)
-                    Text("NO NOTIFICATIONS")
-                        .font(DN.label(9))
-                        .tracking(0.8)
-                        .foregroundColor(DN.textDisabled)
+                VStack(spacing: 6) {
+                    Spacer().frame(height: 28)
+                    Text("No notifications")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(DN.textSecondary)
                     Text("Scheduled task results will appear here")
-                        .font(DN.body(10))
-                        .foregroundColor(DN.textDisabled.opacity(0.7))
+                        .font(.system(size: 11))
+                        .foregroundColor(DN.textDisabled.opacity(0.8))
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
@@ -614,7 +595,10 @@ struct NotificationGroupRow: View {
                 .transition(.opacity)
             }
         }
-        .background(isExpanded ? DN.surface.opacity(0.5) : (unreadCount > 0 ? DN.surface.opacity(0.3) : .clear))
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.white.opacity(isExpanded ? 0.08 : (unreadCount > 0 ? 0.05 : 0.0)))
+        )
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
@@ -669,22 +653,26 @@ private func notifDate(_ iso: String) -> String {
     formatRelativeDate(iso, fallbackFormat: "MMM d, h:mm a")
 }
 
-// MARK: - Settings
+// MARK: - Settings (Apple System Settings-style grouped lists)
 
 struct SettingsPanel: View {
     @ObservedObject var viewModel: NotchViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DN.spaceSM) {
-            Text("SETTINGS")
-                .font(DN.label(10))
-                .tracking(1.5)
-                .foregroundColor(DN.textSecondary)
-                .padding(.bottom, DN.spaceXS)
+        VStack(alignment: .leading, spacing: 0) {
+            // Page title — System Settings style
+            HStack(spacing: 0) {
+                Text("Settings")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(DN.textDisplay)
+                Spacer()
+            }
+            .padding(.horizontal, 2)
+            .padding(.bottom, DN.spaceMD)
 
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 2) {
-                    SettingsSection(title: "CHAT") {
+                VStack(alignment: .leading, spacing: DN.spaceMD) {
+                    SettingsSection(title: "Chat") {
                         SettingsToggleRow(
                             icon: "bubble.left.and.text.bubble.right",
                             title: "Open chat on send",
@@ -705,36 +693,20 @@ struct SettingsPanel: View {
                         )
                     }
 
-                    SettingsSection(title: "PROVIDER") {
+                    SettingsSection(title: "Provider") {
                         DefaultProviderRow(viewModel: viewModel)
                         ProviderRow(viewModel: viewModel, providerType: "anthropic")
                         ProviderRow(viewModel: viewModel, providerType: "openai")
                         ProviderRow(viewModel: viewModel, providerType: "openrouter")
                     }
 
-                    SettingsSection(title: "WIDGETS") {
+                    SettingsSection(title: "Widgets", footer: "Pin up to 3 widgets to your overview.") {
                         ForEach(PinnedWidget.allCases, id: \.rawValue) { widget in
                             widgetToggleRow(widget)
                         }
-
-                        HStack {
-                            Spacer()
-                            Text("MAX 3 WIDGETS")
-                                .font(DN.label(7))
-                                .tracking(0.8)
-                                .foregroundColor(DN.textDisabled)
-                            Spacer()
-                        }
-                        .padding(.vertical, DN.spaceXS)
                     }
 
-                    SettingsSection(title: "DISPLAY") {
-                        SettingsToggleRow(
-                            icon: "battery.75percent",
-                            title: "Battery indicator",
-                            subtitle: "Show battery in the top bar",
-                            isOn: $viewModel.settings.showBattery
-                        )
+                    SettingsSection(title: "Display") {
                         SettingsToggleRow(
                             icon: "circle.grid.3x3",
                             title: "Dot grid",
@@ -744,8 +716,8 @@ struct SettingsPanel: View {
                         if viewModel.settings.showDotGrid {
                             SettingsColorRow(
                                 icon: "paintbrush",
-                                title: "Grid color",
-                                subtitle: "Dot grid color",
+                                title: "Accent color",
+                                subtitle: "Used for the dot grid and player controls",
                                 selectedHex: $viewModel.settings.dotGridColor
                             )
                             SettingsSliderRow(
@@ -758,10 +730,10 @@ struct SettingsPanel: View {
                         }
                     }
 
-                    SettingsSection(title: "AGENTS") {
+                    SettingsSection(title: "Agents") {
                         SettingsToggleRow(
                             icon: "waveform",
-                            title: "Live state",
+                            title: "Live activity",
                             subtitle: "Real-time tool activity for agents",
                             isOn: $viewModel.settings.showAgentLiveState
                         )
@@ -773,12 +745,14 @@ struct SettingsPanel: View {
                         )
                     }
 
-                    SettingsSection(title: "INTEGRATIONS") {
+                    SettingsSection(title: "Integrations") {
                         AppConnectionRow(viewModel: viewModel, appType: "gmail", displayName: "Gmail", icon: "envelope.fill")
                         AppConnectionRow(viewModel: viewModel, appType: "googlecalendar", displayName: "Google Calendar", icon: "calendar")
                         AppConnectionRow(viewModel: viewModel, appType: "googledocs", displayName: "Google Docs", icon: "doc.text.fill")
                         AppConnectionRow(viewModel: viewModel, appType: "github", displayName: "GitHub", icon: "chevron.left.forwardslash.chevron.right")
                     }
+
+                    Spacer().frame(height: DN.spaceMD)
                 }
             }
         }
@@ -798,7 +772,7 @@ struct SettingsPanel: View {
             isOn: Binding(
                 get: { viewModel.settings.pinnedWidgets.contains(widget) },
                 set: { newValue in
-                    withAnimation(.easeOut(duration: DN.microDuration)) {
+                    withAnimation(DN.transition) {
                         if !newValue {
                             viewModel.settings.pinnedWidgets.removeAll { $0 == widget }
                         } else if viewModel.settings.pinnedWidgets.count < 3 {
@@ -836,55 +810,53 @@ struct DefaultProviderRow: View {
     }
 
     var body: some View {
-        HStack(spacing: DN.spaceSM) {
-            Image(systemName: "server.rack")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(isActive ? DN.success : DN.textDisabled)
-                .frame(width: 18)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Default")
-                    .font(DN.body(11))
-                    .foregroundColor(DN.textPrimary)
-                Text("Server API key")
-                    .font(DN.mono(8))
-                    .foregroundColor(isActive ? DN.success : DN.textDisabled)
-            }
-
-            Spacer()
-
+        SettingsRowChrome(icon: "server.rack", iconTint: iconTint(for: "server.rack"), title: "Default", subtitle: "Server API key") {
             if isActive {
-                Text("ACTIVE")
-                    .font(DN.label(7))
-                    .tracking(0.6)
-                    .foregroundColor(DN.success)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3)
-                            .stroke(DN.success.opacity(0.4), lineWidth: 1)
-                    )
+                StatusBadge(text: "Active", color: .green)
             } else {
-                Button(action: {
+                SecondaryActionButton(label: "Use") {
                     viewModel.deactivateAllProviders()
-                }) {
-                    Text("USE")
-                        .font(DN.label(7))
-                        .tracking(0.6)
-                        .foregroundColor(DN.textSecondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(DN.border, lineWidth: 1)
-                        )
                 }
-                .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, DN.spaceSM)
-        .padding(.vertical, 6)
-        .background(DN.surface)
+    }
+}
+
+struct StatusBadge: View {
+    let text: String
+    let color: Color
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule(style: .continuous).fill(color.opacity(0.14))
+            )
+    }
+}
+
+struct SecondaryActionButton: View {
+    let label: String
+    var tint: Color = .white
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(tint)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule(style: .continuous).fill(Color.white.opacity(0.10))
+                )
+                .overlay(
+                    Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 0.6)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -923,55 +895,35 @@ struct ProviderRow: View {
         ProviderConfig.defaultModels[providerType] ?? ""
     }
 
+    private var providerTint: Color {
+        switch providerType {
+        case "anthropic": return Color(hex: 0xD97757)
+        case "openai": return Color(hex: 0x10A37F)
+        case "openrouter": return .purple
+        default: return .blue
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header row — always visible
-            HStack(spacing: DN.spaceSM) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(isActive ? DN.success : DN.textDisabled)
-                    .frame(width: 18)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(displayName)
-                        .font(DN.body(11))
-                        .foregroundColor(DN.textPrimary)
-                    if isConfigured {
-                        Text(isActive ? "Active · \(config?.modelId ?? "")" : config?.modelId ?? "")
-                            .font(DN.mono(8))
-                            .foregroundColor(isActive ? DN.success : DN.textDisabled)
-                            .lineLimit(1)
-                    } else {
-                        Text("Not configured")
-                            .font(DN.mono(8))
-                            .foregroundColor(DN.textDisabled)
-                    }
+            // Header row
+            SettingsRowChrome(
+                icon: icon,
+                iconTint: providerTint,
+                title: displayName,
+                subtitle: isConfigured ? (isActive ? "Active · \(config?.modelId ?? "")" : config?.modelId ?? "") : "Not configured"
+            ) {
+                HStack(spacing: 6) {
+                    if isActive { StatusBadge(text: "Active", color: .green) }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(DN.textDisabled)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
-
-                Spacer()
-
-                if isActive {
-                    Text("ACTIVE")
-                        .font(DN.label(7))
-                        .tracking(0.6)
-                        .foregroundColor(DN.success)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 3)
-                                .stroke(DN.success.opacity(0.4), lineWidth: 1)
-                        )
-                }
-
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundColor(DN.textDisabled)
             }
-            .padding(.horizontal, DN.spaceSM)
-            .padding(.vertical, 6)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.easeOut(duration: DN.microDuration)) {
+                withAnimation(DN.transition) {
                     isExpanded.toggle()
                     if isExpanded && modelId.isEmpty {
                         modelId = config?.modelId ?? defaultModel
@@ -979,147 +931,109 @@ struct ProviderRow: View {
                 }
             }
 
-            // Expanded form
             if isExpanded {
-                VStack(alignment: .leading, spacing: DN.spaceXS) {
-                    // API Key
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("API KEY")
-                            .font(DN.label(7))
-                            .tracking(0.8)
-                            .foregroundColor(DN.textDisabled)
-                        SecureField("Enter API key...", text: $apiKey)
-                            .font(DN.mono(10))
+                VStack(alignment: .leading, spacing: 10) {
+                    formField(label: "API KEY", systemImage: "key.fill") {
+                        SecureField("sk-…", text: $apiKey)
                             .textFieldStyle(.plain)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(DN.black)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(DN.border, lineWidth: 1)
-                            )
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(DN.textPrimary)
                     }
 
-                    // Model ID
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("MODEL")
-                            .font(DN.label(7))
-                            .tracking(0.8)
-                            .foregroundColor(DN.textDisabled)
+                    formField(label: "MODEL", systemImage: "cube.fill") {
                         TextField(defaultModel, text: $modelId)
-                            .font(DN.mono(10))
                             .textFieldStyle(.plain)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(DN.black)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(DN.border, lineWidth: 1)
-                            )
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(DN.textPrimary)
                     }
 
-                    // Action buttons
-                    HStack(spacing: DN.spaceXS) {
-                        // Verify
-                        Button(action: {
+                    HStack(spacing: 8) {
+                        SecondaryActionButton(label: isVerifying ? "Verifying…" : (isVerified && apiKey.isEmpty ? "Verified" : "Verify"),
+                                              tint: isVerified && apiKey.isEmpty ? .green : .white) {
                             guard !apiKey.isEmpty else { return }
                             let model = modelId.isEmpty ? defaultModel : modelId
                             viewModel.verifyProviderKey(provider: providerType, apiKey: apiKey, modelId: model)
-                        }) {
-                            HStack(spacing: 4) {
-                                if isVerifying {
-                                    ProgressView()
-                                        .scaleEffect(0.4)
-                                        .frame(width: 10, height: 10)
-                                } else if isVerified && apiKey.isEmpty {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 7, weight: .bold))
-                                }
-                                Text(isVerifying ? "VERIFYING" : (isVerified && apiKey.isEmpty ? "VERIFIED" : "VERIFY"))
-                                    .font(DN.label(7))
-                                    .tracking(0.6)
-                            }
-                            .foregroundColor(isVerified && apiKey.isEmpty ? DN.success : DN.textSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke((isVerified && apiKey.isEmpty ? DN.success : DN.border).opacity(0.6), lineWidth: 1)
-                            )
                         }
-                        .buttonStyle(.plain)
                         .disabled(apiKey.isEmpty || isVerifying)
                         .opacity(apiKey.isEmpty && !isVerified ? 0.4 : 1)
 
-                        // Save
-                        Button(action: {
+                        PrimaryActionButton(label: "Save") {
                             guard !apiKey.isEmpty else { return }
                             let model = modelId.isEmpty ? defaultModel : modelId
                             viewModel.saveProviderConfig(provider: providerType, apiKey: apiKey, modelId: model)
                             apiKey = ""
-                        }) {
-                            Text("SAVE")
-                                .font(DN.label(7))
-                                .tracking(0.6)
-                                .foregroundColor(DN.black)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(apiKey.isEmpty ? DN.textDisabled : DN.success)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
                         }
-                        .buttonStyle(.plain)
                         .disabled(apiKey.isEmpty)
+                        .opacity(apiKey.isEmpty ? 0.4 : 1)
 
                         Spacer()
 
-                        // Delete
                         if isConfigured {
-                            Button(action: {
+                            SecondaryActionButton(label: "Delete", tint: DN.accent) {
                                 viewModel.deleteProviderConfig(provider: providerType)
                                 apiKey = ""
                                 modelId = defaultModel
-                            }) {
-                                Text("DELETE")
-                                    .font(DN.label(7))
-                                    .tracking(0.6)
-                                    .foregroundColor(DN.accent)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .stroke(DN.accent.opacity(0.4), lineWidth: 1)
-                                    )
                             }
-                            .buttonStyle(.plain)
                         }
                     }
 
-                    // Error
                     if let error = error {
                         Text(error)
-                            .font(DN.mono(8))
+                            .font(.system(size: 11))
                             .foregroundColor(DN.accent)
                             .lineLimit(2)
                     }
-
-                    // Verified success
-                    if viewModel.providerVerified[providerType] == true {
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 9))
-                                .foregroundColor(DN.success)
-                            Text("Key verified")
-                                .font(DN.mono(8))
-                                .foregroundColor(DN.success)
-                        }
-                    }
                 }
-                .padding(.horizontal, DN.spaceSM)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+                .padding(.top, 4)
                 .transition(.opacity)
             }
         }
-        .background(DN.surface)
+    }
+
+    @ViewBuilder
+    private func formField<Content: View>(label: String, systemImage: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(DN.textDisabled)
+                .tracking(0.4)
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10))
+                    .foregroundColor(DN.textDisabled)
+                content()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.black.opacity(0.30))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.6)
+            )
+        }
+    }
+}
+
+struct PrimaryActionButton: View {
+    let label: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule(style: .continuous).fill(Color.accentColor.opacity(0.85))
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1135,108 +1049,171 @@ struct AppConnectionRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: DN.spaceSM) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(isConnected ? DN.success : DN.textDisabled)
-                    .frame(width: 18)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(displayName)
-                        .font(DN.body(11))
-                        .foregroundColor(DN.textPrimary)
-                    Text(isLoading ? "Checking..." : (isConnected ? "Connected" : "Not connected"))
-                        .font(DN.mono(8))
-                        .foregroundColor(isConnected ? DN.success : DN.textDisabled)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
+            SettingsRowChrome(
+                icon: icon,
+                iconTint: iconTint(for: icon),
+                title: displayName,
+                subtitle: isLoading ? "Checking…" : (isConnected ? "Connected" : "Not connected")
+            ) {
                 if isLoading {
-                    ProgressView()
-                        .scaleEffect(0.5)
-                        .frame(width: 32, height: 18)
+                    ProgressView().controlSize(.small)
                 } else {
                     HStack(spacing: 6) {
                         if error != nil && !isConnected {
-                            Button(action: {
+                            SecondaryActionButton(label: "Reset", tint: DN.warning) {
                                 viewModel.resetApp(appType)
-                            }) {
-                                Text("RESET")
-                                    .font(DN.label(7))
-                                    .tracking(0.6)
-                                    .foregroundColor(DN.warning)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .stroke(DN.warning.opacity(0.4), lineWidth: 1)
-                                    )
                             }
-                            .buttonStyle(.plain)
                         }
-
-                        Button(action: {
-                            if isConnected {
+                        if isConnected {
+                            SecondaryActionButton(label: "Disconnect", tint: DN.accent) {
                                 viewModel.disconnectApp(appType)
-                            } else {
+                            }
+                        } else {
+                            PrimaryActionButton(label: "Connect") {
                                 viewModel.connectApp(appType)
                             }
-                        }) {
-                            Text(isConnected ? "DISCONNECT" : "CONNECT")
-                                .font(DN.label(7))
-                                .tracking(0.6)
-                                .foregroundColor(isConnected ? DN.accent : DN.success)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(isConnected ? DN.accent.opacity(0.4) : DN.success.opacity(0.4), lineWidth: 1)
-                                )
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
 
             if let error = error {
                 Text(error)
-                    .font(DN.mono(8))
+                    .font(.system(size: 11))
                     .foregroundColor(DN.accent)
                     .lineLimit(2)
-                    .padding(.top, 4)
-                    .padding(.leading, 26)
+                    .padding(.top, 2)
+                    .padding(.bottom, 8)
+                    .padding(.horizontal, 46)
             }
         }
-        .padding(.horizontal, DN.spaceSM)
-        .padding(.vertical, 6)
-        .background(DN.surface)
         .onAppear {
             viewModel.checkAppStatus(appType)
         }
     }
 }
 
+// Apple System Settings-style section: header label above an `insetGrouped` glass card.
 struct SettingsSection<Content: View>: View {
     let title: String
+    var footer: String? = nil
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(DN.label(8))
-                .tracking(1.2)
-                .foregroundColor(DN.textDisabled)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(DN.textSecondary)
                 .padding(.leading, 4)
-                .padding(.top, DN.spaceSM)
-                .padding(.bottom, DN.spaceXS)
 
-            VStack(spacing: 1) {
-                content
+            VStack(spacing: 0) {
+                _SettingsRowList { content }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.6)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            if let footer = footer {
+                Text(footer)
+                    .font(.system(size: 10))
+                    .foregroundColor(DN.textDisabled)
+                    .padding(.leading, 4)
+                    .padding(.top, 2)
+            }
         }
+    }
+}
+
+// Helper that puts hairline dividers between rows. We can't easily inject between
+// arbitrary child views, so the variadic build is approximated with VStack+overlay
+// hairlines in the rows themselves where needed. Keep this transparent passthrough
+// for now.
+struct _SettingsRowList<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    var body: some View { content() }
+}
+
+// Apple-style row: tinted square icon tile + title/subtitle + control on trailing edge.
+struct SettingsRowChrome<Trailing: View>: View {
+    let icon: String
+    var iconTint: Color = .blue
+    let title: String
+    var subtitle: String? = nil
+    let trailing: () -> Trailing
+
+    init(icon: String, iconTint: Color = .blue, title: String, subtitle: String? = nil, @ViewBuilder trailing: @escaping () -> Trailing) {
+        self.icon = icon
+        self.iconTint = iconTint
+        self.title = title
+        self.subtitle = subtitle
+        self.trailing = trailing
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Tinted icon tile (System Settings style)
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(iconTint.gradient)
+                    .frame(width: 22, height: 22)
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 13))
+                    .foregroundColor(DN.textPrimary)
+                if let subtitle = subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundColor(DN.textDisabled)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer()
+
+            trailing()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.white.opacity(0.06))
+                .frame(height: 0.5)
+                .padding(.leading, 46)
+        }
+    }
+}
+
+private func iconTint(for icon: String) -> Color {
+    switch icon {
+    case "bubble.left.and.text.bubble.right": return .blue
+    case "arrow.counterclockwise": return .indigo
+    case "lock.open": return .gray
+    case "server.rack": return .gray
+    case "circle.grid.3x3": return Color(red: 0.55, green: 0.55, blue: 0.95)
+    case "paintbrush": return .pink
+    case "circle.lefthalf.filled": return Color(red: 0.5, green: 0.5, blue: 0.55)
+    case "waveform": return .green
+    case "rectangle.compress.vertical": return .teal
+    case "envelope.fill": return .red
+    case "calendar": return .blue
+    case "doc.text.fill": return .blue
+    case "chevron.left.forwardslash.chevron.right": return Color(red: 0.18, green: 0.18, blue: 0.2)
+    default: return .blue
     }
 }
 
@@ -1247,35 +1224,15 @@ struct SettingsToggleRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        HStack(spacing: DN.spaceSM) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(isOn ? DN.textPrimary : DN.textDisabled)
-                .frame(width: 18)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(DN.body(11))
-                    .foregroundColor(DN.textPrimary)
-                Text(subtitle)
-                    .font(DN.mono(8))
-                    .foregroundColor(DN.textDisabled)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            SettingsToggle(isOn: $isOn)
+        SettingsRowChrome(icon: icon, iconTint: iconTint(for: icon), title: title, subtitle: subtitle) {
+            Toggle("", isOn: $isOn)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .labelsHidden()
+                .tint(.green)
         }
-        .padding(.horizontal, DN.spaceSM)
-        .padding(.vertical, 6)
-        .background(DN.surface)
         .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.easeOut(duration: DN.microDuration)) {
-                isOn.toggle()
-            }
-        }
+        .onTapGesture { isOn.toggle() }
     }
 }
 
@@ -1287,37 +1244,40 @@ struct SettingsSliderRow: View {
     var range: ClosedRange<Double> = 0...1
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DN.spaceXS) {
-            HStack(spacing: DN.spaceSM) {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(iconTint(for: icon).gradient)
+                    .frame(width: 22, height: 22)
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(DN.textPrimary)
-                    .frame(width: 18)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(DN.body(11))
-                        .foregroundColor(DN.textPrimary)
-                    Text(subtitle)
-                        .font(DN.mono(8))
-                        .foregroundColor(DN.textDisabled)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                Text("\(Int(value * 100))%")
-                    .font(DN.mono(9))
-                    .foregroundColor(DN.textSecondary)
-                    .frame(width: 32, alignment: .trailing)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
             }
 
-            Slider(value: $value, in: range)
-                .tint(DN.textSecondary)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 13))
+                        .foregroundColor(DN.textPrimary)
+                    Spacer()
+                    Text("\(Int(value * 100))%")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(DN.textSecondary)
+                        .monospacedDigit()
+                }
+                Slider(value: $value, in: range)
+                    .controlSize(.mini)
+                    .tint(.white.opacity(0.85))
+            }
         }
-        .padding(.horizontal, DN.spaceSM)
-        .padding(.vertical, 6)
-        .background(DN.surface)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.white.opacity(0.06))
+                .frame(height: 0.5)
+                .padding(.leading, 46)
+        }
     }
 }
 
@@ -1327,82 +1287,29 @@ struct SettingsColorRow: View {
     let subtitle: String
     @Binding var selectedHex: String
 
-    private let presets: [(String, String)] = [
-        ("#FFFFFF", "White"),
-        ("#D97757", "Orange"),
-        ("#00B4D8", "Cyan"),
-        ("#D71921", "Red"),
-        ("#4A9E5C", "Green"),
-        ("#D4A843", "Yellow"),
-        ("#A855F7", "Purple"),
-        ("#10A37F", "Teal"),
+    private let presets: [String] = [
+        "#FFFFFF", "#D97757", "#00B4D8", "#D71921",
+        "#4A9E5C", "#D4A843", "#A855F7", "#10A37F",
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DN.spaceXS) {
-            HStack(spacing: DN.spaceSM) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(DN.textPrimary)
-                    .frame(width: 18)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(DN.body(11))
-                        .foregroundColor(DN.textPrimary)
-                    Text(subtitle)
-                        .font(DN.mono(8))
-                        .foregroundColor(DN.textDisabled)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-            }
-
+        SettingsRowChrome(icon: icon, iconTint: iconTint(for: icon), title: title, subtitle: subtitle) {
             HStack(spacing: 6) {
-                ForEach(presets, id: \.0) { hex, _ in
-                    Button(action: {
-                        withAnimation(.easeOut(duration: DN.microDuration)) {
-                            selectedHex = hex
-                        }
-                    }) {
+                ForEach(presets, id: \.self) { hex in
+                    let isSelected = selectedHex == hex
+                    Button(action: { withAnimation(DN.transition) { selectedHex = hex } }) {
                         Circle()
                             .fill(Color(hex: UInt32(hex.dropFirst(), radix: 16) ?? 0xFFFFFF))
-                            .frame(width: 18, height: 18)
+                            .frame(width: 16, height: 16)
                             .overlay(
                                 Circle()
-                                    .stroke(selectedHex == hex ? DN.textDisplay : .clear, lineWidth: 2)
+                                    .strokeBorder(Color.white.opacity(isSelected ? 0.95 : 0.18), lineWidth: isSelected ? 1.5 : 0.5)
                             )
-                            .overlay(
-                                Circle()
-                                    .stroke(DN.black, lineWidth: selectedHex == hex ? 1 : 0)
-                                    .padding(1)
-                            )
+                            .scaleEffect(isSelected ? 1.1 : 1.0)
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
-        .padding(.horizontal, DN.spaceSM)
-        .padding(.vertical, 6)
-        .background(DN.surface)
-    }
-}
-
-struct SettingsToggle: View {
-    @Binding var isOn: Bool
-
-    var body: some View {
-        ZStack(alignment: isOn ? .trailing : .leading) {
-            Capsule()
-                .fill(isOn ? DN.success.opacity(0.8) : DN.border)
-                .frame(width: 32, height: 18)
-
-            Circle()
-                .fill(Color.white)
-                .frame(width: 14, height: 14)
-                .padding(.horizontal, 2)
-        }
-        .animation(.easeOut(duration: DN.microDuration), value: isOn)
     }
 }

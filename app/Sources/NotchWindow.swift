@@ -248,26 +248,19 @@ class NotchWindowController: NSObject {
         }
     }
 
-    // Mirror NotchShellView.shapeWidth/Height so trigger zones match the visible shape exactly.
+    // Single canonical expanded size — must match NotchShellView.expandedW/H
     private func expandedShapeWidth(notchW: CGFloat) -> CGFloat {
         if viewModel.isPeeking {
             return viewModel.peekHovering ? notchW + 200 : notchW + 140
         }
-        switch viewModel.viewState {
-        case .taskList, .agentChat, .processList: return 540
-        case .stats, .settings, .notifications, .overview: return 520
-        }
+        return NotchShellView.expandedW
     }
 
     private func expandedShapeHeight(notchH: CGFloat) -> CGFloat {
         if viewModel.isPeeking {
             return viewModel.peekHovering ? notchH + 80 : notchH + 28
         }
-        switch viewModel.viewState {
-        case .overview, .taskList: return notchH + 260
-        case .agentChat, .processList, .settings: return notchH + 320
-        case .stats, .notifications: return notchH + 290
-        }
+        return notchH + NotchShellView.expandedH
     }
 
     private func expand() {

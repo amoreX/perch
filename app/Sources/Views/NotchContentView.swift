@@ -40,36 +40,39 @@ struct NotchContentView: View {
     // MARK: - Left Column
 
     private var leftColumn: some View {
-        VStack(alignment: .leading, spacing: DN.spaceXS) {
+        VStack(alignment: .leading, spacing: 12) {
             // User greeting
             if let name = viewModel.authManager?.userName, !name.isEmpty {
                 Text("Hi, \(name)")
-                    .font(DN.body(11, weight: .regular))
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundColor(DN.textSecondary)
             }
 
-            // Time + date
-            HStack(alignment: .firstTextBaseline, spacing: DN.space2xs) {
-                Text(viewModel.timeString)
-                    .font(DN.display(32))
-                    .foregroundColor(DN.textDisplay)
-                    .tracking(-1)
+            // Time — heavy display
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .lastTextBaseline, spacing: 4) {
+                    Text(viewModel.timeString)
+                        .font(.system(size: 38, weight: .semibold, design: .rounded))
+                        .foregroundColor(DN.textDisplay)
+                        .monospacedDigit()
+                        .tracking(-1.5)
 
-                Text(viewModel.periodString)
-                    .font(DN.label(9))
-                    .tracking(0.8)
-                    .foregroundColor(DN.textDisabled)
+                    Text(viewModel.periodString)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(DN.textSecondary)
+                        .padding(.bottom, 6)
+                }
+
+                Text(viewModel.dateString)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(DN.textSecondary)
             }
 
-            Text(viewModel.dateString)
-                .font(DN.body(11, weight: .medium))
-                .foregroundColor(DN.textSecondary)
-
-            Spacer().frame(height: DN.space2xs)
-
             // Pinned widgets
-            ForEach(viewModel.settings.pinnedWidgets, id: \.self) { widget in
-                pinnedWidgetView(widget)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(viewModel.settings.pinnedWidgets, id: \.self) { widget in
+                    pinnedWidgetView(widget)
+                }
             }
 
             Spacer(minLength: 0)
@@ -108,10 +111,10 @@ struct NotchContentView: View {
 
     private var dividerBar: some View {
         Rectangle()
-            .fill(DN.border)
-            .frame(width: 1)
-            .padding(.vertical, DN.spaceXS)
-            .padding(.horizontal, DN.spaceSM + DN.space2xs)
+            .fill(Color.white.opacity(0.08))
+            .frame(width: 0.5)
+            .padding(.vertical, DN.spaceSM)
+            .padding(.horizontal, DN.spaceMD)
     }
 
     // MARK: - Main Column
@@ -133,17 +136,14 @@ struct NotchContentView: View {
     // MARK: - Overview right column
 
     private var overviewRightColumn: some View {
-        VStack(alignment: .leading, spacing: DN.spaceSM) {
-            Text("Agents")
-                .font(DN.body(11, weight: .semibold))
-                .foregroundColor(DN.textSecondary)
-                .padding(.leading, 2)
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(title: "Agents", trailing: AnyView(EmptyView()))
 
             if viewModel.agentMonitor.agents.isEmpty && activeTasks.isEmpty && viewModel.scheduledTasks.isEmpty {
                 emptyAgentState
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: DN.spaceSM) {
+                    VStack(spacing: 10) {
                         ForEach(viewModel.agentMonitor.groupedAgents) { group in
                             AgentGroupView(group: group, isCompact: viewModel.settings.compactAgentRows, collapsedGroups: $viewModel.settings.collapsedGroups, showLiveState: viewModel.settings.showAgentLiveState) { agent in
                                 viewModel.agentMonitor.activateAgent(agent)
@@ -160,6 +160,7 @@ struct NotchContentView: View {
                             tasksSection(compact: viewModel.settings.compactAgentRows)
                         }
                     }
+                    .padding(.bottom, 4)
                 }
             }
 
@@ -170,6 +171,19 @@ struct NotchContentView: View {
         .onAppear {
             viewModel.loadScheduledTasks()
         }
+    }
+
+    // Reusable Apple-style section header
+    private func sectionHeader(title: String, trailing: AnyView) -> some View {
+        HStack(spacing: 0) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(DN.textSecondary)
+            Spacer()
+            trailing
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 4)
     }
 
     // MARK: - Empty state
@@ -193,80 +207,89 @@ struct NotchContentView: View {
     // MARK: - Full agents column (conversations only)
 
     private var agentsColumn: some View {
-        VStack(alignment: .leading, spacing: DN.spaceSM) {
-            HStack(spacing: DN.spaceSM) {
-                Image(systemName: "bubble.left.and.text.bubble.right")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(DN.textSecondary)
-
-                Text("CONVERSATIONS")
-                    .font(DN.label(9))
-                    .tracking(1.5)
-                    .foregroundColor(DN.textSecondary)
-
+        VStack(alignment: .leading, spacing: 12) {
+            // Page header
+            HStack(spacing: 0) {
+                Text("Conversations")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(DN.textDisplay)
                 Spacer()
-
-                HStack(spacing: DN.spaceXS) {
-                    IconActionButton(icon: "plus", label: "NEW") {
-                        withAnimation(DN.transition) {
-                            viewModel.viewState = .overview
-                            viewModel.shouldFocusChatInput = true
-                        }
+                Button(action: {
+                    withAnimation(DN.transition) {
+                        viewModel.viewState = .overview
+                        viewModel.shouldFocusChatInput = true
                     }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("New")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Capsule(style: .continuous).fill(Color.white.opacity(0.10)))
+                    .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 0.6))
                 }
+                .buttonStyle(.plain)
             }
+            .padding(.horizontal, 2)
 
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: DN.spaceXS) {
-                    // Active / recent in-memory tasks
-                    ForEach(viewModel.tasks.filter { !$0.isFromHistory }) { task in
-                        AgentRow(
-                            task: task,
-                            isCompact: false,
-                            activityText: viewModel.activityText(for: task)
-                        ) {
-                            withAnimation(DN.transition) {
-                                viewModel.viewState = .agentChat(task.id)
+                VStack(alignment: .leading, spacing: 14) {
+                    let activeOnly = viewModel.tasks.filter { !$0.isFromHistory }
+                    if !activeOnly.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            sectionHeader(title: "Active", trailing: AnyView(EmptyView()))
+                            VStack(spacing: 0) {
+                                ForEach(activeOnly) { task in
+                                    AgentRow(
+                                        task: task,
+                                        isCompact: false,
+                                        activityText: viewModel.activityText(for: task)
+                                    ) {
+                                        withAnimation(DN.transition) {
+                                            viewModel.viewState = .agentChat(task.id)
+                                        }
+                                    }
+                                }
                             }
+                            .liquidGlass(cornerRadius: DN.radiusMD, intensity: 0.85)
                         }
                     }
 
-                    // Past threads from DB
+                    // History
                     if !viewModel.threadHistory.isEmpty {
                         let loadedThreadIds = Set(viewModel.tasks.compactMap { $0.threadId })
-
                         let unloaded = viewModel.threadHistory.filter { !loadedThreadIds.contains($0.id) }
                         if !unloaded.isEmpty {
-                            Divider()
-                                .background(DN.border)
-                                .padding(.vertical, DN.spaceXS)
-
-                            Text("HISTORY")
-                                .font(DN.label(8))
-                                .tracking(1.2)
-                                .foregroundColor(DN.textDisabled)
-                                .padding(.leading, 4)
-
-                            ForEach(unloaded) { thread in
-                                threadRow(thread)
+                            VStack(alignment: .leading, spacing: 6) {
+                                sectionHeader(title: "History", trailing: AnyView(EmptyView()))
+                                VStack(spacing: 0) {
+                                    ForEach(unloaded) { thread in
+                                        threadRow(thread)
+                                    }
+                                }
+                                .liquidGlass(cornerRadius: DN.radiusMD, intensity: 0.85)
                             }
                         }
                     }
 
                     if activeTasks.isEmpty && viewModel.threadHistory.isEmpty {
-                        VStack(spacing: DN.spaceSM) {
-                            Spacer().frame(height: DN.spaceLG)
-                            Text("NO CONVERSATIONS")
-                                .font(DN.label(9))
-                                .tracking(0.8)
-                                .foregroundColor(DN.textDisabled)
-                            Text("Start a chat from the HOME tab")
-                                .font(DN.body(10))
-                                .foregroundColor(DN.textDisabled.opacity(0.7))
+                        VStack(spacing: 6) {
+                            Spacer().frame(height: 28)
+                            Text("No conversations")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(DN.textSecondary)
+                            Text("Start a chat from the Home tab")
+                                .font(.system(size: 11))
+                                .foregroundColor(DN.textDisabled.opacity(0.8))
                         }
                         .frame(maxWidth: .infinity)
                     }
                 }
+                .padding(.bottom, 8)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -282,36 +305,38 @@ struct NotchContentView: View {
         Button(action: {
             viewModel.loadThread(thread.id)
         }) {
-            HStack(spacing: DN.spaceSM) {
+            HStack(spacing: 10) {
                 Image(systemName: "bubble.left")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(DN.textDisabled)
+                    .frame(width: 18)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(thread.title ?? "Conversation")
-                        .font(DN.body(11))
+                        .font(.system(size: 13))
                         .foregroundColor(DN.textPrimary)
                         .lineLimit(1)
 
                     Text(formatRelativeDate(thread.updatedAt, fallbackFormat: "MMM d"))
-                        .font(DN.mono(8))
+                        .font(.system(size: 11))
                         .foregroundColor(DN.textDisabled)
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .medium))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(DN.textDisabled)
             }
-            .padding(.horizontal, DN.spaceSM)
-            .padding(.vertical, DN.spaceXS + 2)
-            .background(DN.surface.opacity(0.6))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(DN.border, lineWidth: 0.5)
-            )
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color.white.opacity(0.06))
+                    .frame(height: 0.5)
+                    .padding(.leading, 40)
+            }
         }
         .buttonStyle(.plain)
     }
@@ -1058,7 +1083,7 @@ struct ScheduledTasksSection: View {
     private var isExpanded: Bool { !viewModel.settings.collapsedGroups.contains("scheduled") }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: 0) {
             // Header
             Button(action: {
                 withAnimation(DN.transition) {
@@ -1067,44 +1092,40 @@ struct ScheduledTasksSection: View {
             }) {
                 HStack(spacing: DN.spaceSM) {
                     Image(systemName: "clock.arrow.2.circlepath")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(DN.warning)
+                        .frame(width: 14)
 
-                    Text("SCHEDULED")
-                        .font(DN.label(8))
-                        .tracking(1.2)
+                    Text("Scheduled")
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(DN.textSecondary)
 
                     Text("\(viewModel.scheduledTasks.filter { $0.enabled }.count)")
-                        .font(DN.mono(8))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(DN.textDisabled)
 
                     Spacer()
 
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(DN.textDisabled)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
-                .padding(.horizontal, DN.spaceSM)
-                .padding(.vertical, DN.spaceXS)
+                .padding(.horizontal, DN.spaceMD)
+                .padding(.vertical, DN.spaceSM)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             if isExpanded {
-                VStack(spacing: 1) {
+                VStack(spacing: 0) {
                     ForEach(viewModel.scheduledTasks) { task in
                         ScheduledTaskRow(task: task, viewModel: viewModel)
                     }
                 }
             }
         }
-        .background(DN.surface.opacity(0.4))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(DN.border, lineWidth: 0.5)
-        )
+        .liquidGlass(cornerRadius: DN.radiusMD, tint: DN.warning, intensity: 0.85)
     }
 }
 
@@ -1194,24 +1215,29 @@ struct ScheduledTaskRow: View {
 
             // Expanded: show last result
             if isExpanded, let summary = task.lastResultSummary {
-                VStack(alignment: .leading, spacing: DN.spaceXS) {
-                    Divider().background(DN.border)
+                VStack(alignment: .leading, spacing: 6) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.06))
+                        .frame(height: 0.5)
 
                     Text("LAST OUTPUT")
-                        .font(DN.label(7))
-                        .tracking(1)
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(0.6)
                         .foregroundColor(DN.textDisabled)
 
                     MarkdownView(text: summary, isFinal: true)
                         .lineLimit(10)
                 }
-                .padding(.horizontal, DN.spaceSM)
-                .padding(.bottom, DN.spaceXS + 1)
+                .padding(.horizontal, DN.spaceMD)
+                .padding(.vertical, 6)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(isHovering || isExpanded ? DN.surface : .clear)
-        .animation(.easeOut(duration: DN.microDuration), value: isHovering)
+        .background(
+            Rectangle()
+                .fill(Color.white.opacity(isHovering || isExpanded ? 0.05 : 0.0))
+        )
+        .animation(DN.transition, value: isHovering)
         .onHover { isHovering = $0 }
     }
 }

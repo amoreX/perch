@@ -226,6 +226,20 @@ enum NotchViewState: Equatable {
         default: return false
         }
     }
+
+    /// Stable key for SwiftUI `.id()` so a view-state change triggers a clean cross-fade
+    /// (insert/remove instead of in-place mutation).
+    var transitionKey: String {
+        switch self {
+        case .overview: return "overview"
+        case .taskList: return "taskList"
+        case .agentChat(let id): return "agentChat-\(id)"
+        case .stats: return "stats"
+        case .processList: return "processList"
+        case .settings: return "settings"
+        case .notifications: return "notifications"
+        }
+    }
 }
 
 // MARK: - Scheduled Tasks

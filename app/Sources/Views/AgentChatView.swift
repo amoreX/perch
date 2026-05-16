@@ -78,15 +78,23 @@ struct AgentChatView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: DN.spaceSM) {
+        HStack(spacing: 10) {
             Button(action: {
                 withAnimation(DN.transition) {
                     viewModel.viewState = .taskList
                 }
             }) {
-                Text("<")
-                    .font(DN.mono(12, weight: .medium))
-                    .foregroundColor(DN.textSecondary)
+                HStack(spacing: 3) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Back")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .foregroundColor(DN.textSecondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Capsule(style: .continuous).fill(Color.white.opacity(0.06)))
+                .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.10), lineWidth: 0.6))
             }
             .buttonStyle(.plain)
 
@@ -96,7 +104,7 @@ struct AgentChatView: View {
                     .frame(width: 6, height: 6)
 
                 Text(task.description ?? task.task)
-                    .font(DN.body(12, weight: .medium))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(DN.textPrimary)
                     .lineLimit(1)
             }
