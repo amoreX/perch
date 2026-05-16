@@ -185,7 +185,7 @@ class NotchWindowController: NSObject {
 
         if swipeAccumulator > 60 {
             swipeAccumulator = 0
-            withAnimation(.snappy(duration: 0.35)) {
+            withAnimation(DN.viewStateSpring) {
                 viewModel.viewState = .overview
             }
         }
@@ -199,17 +199,32 @@ class NotchWindowController: NSObject {
         let nw = screen.notchWidth
         let nh = screen.notchHeight
 
-        let triggerZone = NSRect(
-            x: cx - (nw + 60) / 2,
-            y: screen.frame.maxY - nh - 10,
-            width: nw + 60,
-            height: nh + 10
-        )
+        // Discrete trigger zones — no fuzzy in-between region:
+        //  - Collapsed: only the physical notch rect (exact width, exact height)
+        //  - Expanded: only the actual expanded shape rect
+        //  No padding, no overshoot — state flips cleanly between off and on.
+        let hit: Bool
+        if viewModel.isExpanded {
+            let ew = expandedShapeWidth(notchW: nw)
+            let eh = expandedShapeHeight(notchH: nh)
+            let expandedRect = NSRect(
+                x: cx - ew / 2,
+                y: screen.frame.maxY - eh,
+                width: ew,
+                height: eh
+            )
+            hit = expandedRect.contains(mouse)
+        } else {
+            let notchRect = NSRect(
+                x: cx - nw / 2,
+                y: screen.frame.maxY - nh,
+                width: nw,
+                height: nh
+            )
+            hit = notchRect.contains(mouse)
+        }
 
-        let inTrigger = triggerZone.contains(mouse)
-        let inContent = viewModel.mouseInContent
-
-        if inTrigger || inContent {
+        if hit {
             collapseTimer?.invalidate()
             collapseTimer = nil
             if !viewModel.isExpanded {
@@ -233,21 +248,43 @@ class NotchWindowController: NSObject {
         }
     }
 
+    // Mirror NotchShellView.shapeWidth/Height so trigger zones match the visible shape exactly.
+    private func expandedShapeWidth(notchW: CGFloat) -> CGFloat {
+        if viewModel.isPeeking {
+            return viewModel.peekHovering ? notchW + 200 : notchW + 140
+        }
+        switch viewModel.viewState {
+        case .taskList, .agentChat, .processList: return 540
+        case .stats, .settings, .notifications, .overview: return 520
+        }
+    }
+
+    private func expandedShapeHeight(notchH: CGFloat) -> CGFloat {
+        if viewModel.isPeeking {
+            return viewModel.peekHovering ? notchH + 80 : notchH + 28
+        }
+        switch viewModel.viewState {
+        case .overview, .taskList: return notchH + 260
+        case .agentChat, .processList, .settings: return notchH + 320
+        case .stats, .notifications: return notchH + 290
+        }
+    }
+
     private func expand() {
         panel.ignoresMouseEvents = false
         viewModel.restoreOrResetView()
-        withAnimation(.snappy(duration: 0.35)) {
+        withAnimation(DN.expandSpring) {
             viewModel.isExpanded = true
         }
     }
 
     private func collapse() {
-        withAnimation(.snappy(duration: 0.3)) {
+        withAnimation(DN.collapseSpring) {
             viewModel.isExpanded = false
             viewModel.isChatInputActive = false
             viewModel.resetView()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self = self else { return }
             if !self.viewModel.isExpanded {
                 self.panel.ignoresMouseEvents = true

@@ -60,12 +60,13 @@ struct NotchShellView: View {
             }
 
             if expanded && !viewModel.isPeeking {
-                // Interactive dot grid behind content
+                // Interactive dot grid behind content — toned down so the glass breathes
                 if viewModel.settings.showDotGrid {
                     DotGridView(dotColor: viewModel.settings.dotGridSwiftColor)
                         .padding(.top, notchH)
-                        .opacity(viewModel.settings.dotGridOpacity)
+                        .opacity(viewModel.settings.dotGridOpacity * 0.6)
                         .allowsHitTesting(false)
+                        .transition(.opacity)
                 }
 
                 expandedTopBar
@@ -76,6 +77,12 @@ struct NotchShellView: View {
                     .padding(.horizontal, DN.spaceMD)
                     .padding(.bottom, DN.spaceSM)
                     .frame(width: shapeWidth, alignment: .top)
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.96, anchor: .top).combined(with: .opacity),
+                            removal: .opacity
+                        )
+                    )
             }
         }
         .frame(width: shapeWidth, height: shapeHeight)
@@ -104,30 +111,57 @@ struct NotchShellView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(.easeOut(duration: 0.35), value: expanded)
-        .animation(.easeOut(duration: 0.25), value: viewModel.isPeeking)
-        .animation(.easeOut(duration: 0.2), value: viewModel.peekHovering)
-        .animation(.easeOut(duration: DN.transitionDuration), value: viewModel.viewState)
+        .animation(DN.expandSpring, value: expanded)
+        .animation(DN.peekSpring, value: viewModel.isPeeking)
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: viewModel.peekHovering)
+        .animation(DN.viewStateSpring, value: viewModel.viewState)
     }
 
     private var notchShape: some View {
-        UnevenRoundedRectangle(
+        let shape = UnevenRoundedRectangle(
             topLeadingRadius: 0,
             bottomLeadingRadius: bottomRadius,
             bottomTrailingRadius: bottomRadius,
             topTrailingRadius: 0,
             style: .continuous
         )
-        .fill(DN.black)
-        .overlay(
-            UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: bottomRadius,
-                bottomTrailingRadius: bottomRadius,
-                topTrailingRadius: 0,
-                style: .continuous
+
+        return ZStack {
+            // Tahoe-style base: liquid glass material
+            shape.fill(.ultraThinMaterial)
+
+            // Dark tint for legibility — slightly less opaque when expanded so glass shows through
+            shape.fill(DN.black.opacity(expanded ? 0.55 : 0.92))
+
+            // Top sheen
+            shape.fill(
+                LinearGradient(
+                    colors: [Color.white.opacity(expanded ? 0.08 : 0.02), Color.white.opacity(0.0)],
+                    startPoint: .top, endPoint: .center
+                )
             )
-            .stroke(expanded ? DN.border : .clear, lineWidth: 1)
+
+            // Bottom rim shadow for depth
+            shape.fill(
+                LinearGradient(
+                    colors: [Color.clear, Color.black.opacity(expanded ? 0.25 : 0.0)],
+                    startPoint: .center, endPoint: .bottom
+                )
+            )
+        }
+        .overlay(
+            // Rim light stroke — only when expanded so the collapsed bar still reads as the physical notch
+            shape.stroke(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(expanded ? 0.16 : 0.0),
+                        Color.white.opacity(expanded ? 0.04 : 0.0),
+                        Color.white.opacity(expanded ? 0.10 : 0.0),
+                    ],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ),
+                lineWidth: 0.8
+            )
         )
     }
 
@@ -238,7 +272,7 @@ struct NotchShellView: View {
                 }) {
                     ZStack(alignment: .topTrailing) {
                         Image(systemName: notifsActive ? "bell.fill" : "bell")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundColor(notifsActive ? DN.textDisplay : DN.textDisabled)
 
                         if viewModel.unreadCount > 0 {
@@ -248,8 +282,16 @@ struct NotchShellView: View {
                                 .offset(x: 2, y: -2)
                         }
                     }
-                    .padding(.horizontal, DN.spaceXS)
-                    .padding(.vertical, DN.spaceXS)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(notifsActive ? Color.white.opacity(0.12) : Color.clear)
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(notifsActive ? DN.glassStrokeHi : Color.clear, lineWidth: 0.6)
+                    )
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -260,24 +302,20 @@ struct NotchShellView: View {
                         viewModel.viewState = .settings
                     }
                 }) {
-                    HStack(spacing: 2) {
-                        if settingsActive {
-                            Text("[")
-                                .font(DN.label(10))
-                                .foregroundColor(DN.textDisplay)
-                        }
-                        Image(systemName: settingsActive ? "gearshape.fill" : "gearshape")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(settingsActive ? DN.textDisplay : DN.textDisabled)
-                        if settingsActive {
-                            Text("]")
-                                .font(DN.label(10))
-                                .foregroundColor(DN.textDisplay)
-                        }
-                    }
-                    .padding(.horizontal, DN.spaceXS)
-                    .padding(.vertical, DN.spaceXS)
-                    .contentShape(Rectangle())
+                    Image(systemName: settingsActive ? "gearshape.fill" : "gearshape")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(settingsActive ? DN.textDisplay : DN.textDisabled)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(settingsActive ? Color.white.opacity(0.12) : Color.clear)
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(settingsActive ? DN.glassStrokeHi : Color.clear, lineWidth: 0.6)
+                        )
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
@@ -293,12 +331,20 @@ struct NotchShellView: View {
 
     private func tabButton(label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(isActive ? "[ \(label) ]" : label)
+            Text(label)
                 .font(DN.label(10))
                 .tracking(1.2)
                 .foregroundColor(isActive ? DN.textDisplay : DN.textDisabled)
-                .padding(.horizontal, DN.spaceXS)
-                .padding(.vertical, DN.spaceXS)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(isActive ? Color.white.opacity(0.12) : Color.clear)
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(isActive ? DN.glassStrokeHi : Color.clear, lineWidth: 0.6)
+                )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

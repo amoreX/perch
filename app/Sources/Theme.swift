@@ -64,8 +64,34 @@ enum DN {
     }
 
     static var transition: Animation {
-        .easeOut(duration: transitionDuration)
+        .spring(response: 0.38, dampingFraction: 0.82, blendDuration: 0.15)
     }
+
+    // Tahoe-style spring animations
+    static var expandSpring: Animation {
+        .spring(response: 0.28, dampingFraction: 0.74, blendDuration: 0.1)
+    }
+
+    static var collapseSpring: Animation {
+        .spring(response: 0.26, dampingFraction: 0.88, blendDuration: 0.1)
+    }
+
+    static var peekSpring: Animation {
+        .spring(response: 0.5, dampingFraction: 0.78, blendDuration: 0.15)
+    }
+
+    static var viewStateSpring: Animation {
+        .spring(response: 0.38, dampingFraction: 0.82, blendDuration: 0.15)
+    }
+
+    // MARK: Liquid Glass colors
+
+    static let glassFill        = Color.white.opacity(0.06)
+    static let glassFillElev    = Color.white.opacity(0.10)
+    static let glassStrokeHi    = Color.white.opacity(0.14)
+    static let glassStrokeLo    = Color.white.opacity(0.03)
+    static let glassHighlight   = Color.white.opacity(0.22)
+    static let glassRimShadow   = Color.black.opacity(0.45)
 
     // MARK: Status color for tasks
 
@@ -108,43 +134,104 @@ func relativeTimeString(_ date: Date, fallbackFormat: String = "MMM d") -> Strin
     return df.string(from: date)
 }
 
-// MARK: - Glass Cell Modifier
+// MARK: - Liquid Glass Modifier (macOS Tahoe-style)
 
-private struct GlassCell: ViewModifier {
-    var cornerRadius: CGFloat = 10
+struct LiquidGlass: ViewModifier {
+    var cornerRadius: CGFloat = 14
+    var tint: Color? = nil
+    var intensity: Double = 1.0
+    var elevated: Bool = false
 
     func body(content: Content) -> some View {
-        content
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+
+        return content
             .background(
                 ZStack {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(DN.surface.opacity(0.55))
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.04), Color.white.opacity(0.01)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            )
+                    // Base material — the actual Tahoe-style blur
+                    shape.fill(.ultraThinMaterial)
+
+                    // Slight dark tint for legibility on bright wallpapers
+                    shape.fill(Color.black.opacity(0.18 * intensity))
+
+                    // Optional hue tint
+                    if let tint = tint {
+                        shape.fill(tint.opacity(0.10 * intensity))
+                    }
+
+                    // Soft top-to-bottom inner glass sheen
+                    shape.fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(elevated ? 0.10 : 0.06),
+                                Color.white.opacity(0.0),
+                            ],
+                            startPoint: .top, endPoint: .center
                         )
+                    )
+
+                    // Bottom rim shadow — adds depth
+                    shape.fill(
+                        LinearGradient(
+                            colors: [
+                                Color.clear,
+                                Color.black.opacity(0.18 * intensity),
+                            ],
+                            startPoint: .center, endPoint: .bottom
+                        )
+                    )
                 }
             )
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .clipShape(shape)
             .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                // Outer rim light — gradient stroke (top-leading bright, bottom-trailing dark)
+                shape.stroke(
+                    LinearGradient(
+                        colors: [
+                            DN.glassStrokeHi,
+                            DN.glassStrokeLo,
+                            Color.white.opacity(0.06),
+                        ],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.8
+                )
+            )
+            .overlay(
+                // Specular highlight on the very top edge
+                shape
+                    .trim(from: 0.0, to: 0.5)
                     .stroke(
                         LinearGradient(
-                            colors: [Color.white.opacity(0.1), Color.white.opacity(0.03)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
+                            colors: [Color.white.opacity(0.0), DN.glassHighlight, Color.white.opacity(0.0)],
+                            startPoint: .leading, endPoint: .trailing
                         ),
-                        lineWidth: 1
+                        lineWidth: 0.6
                     )
+                    .blendMode(.plusLighter)
+                    .allowsHitTesting(false)
             )
     }
 }
 
 extension View {
-    func glassCell(cornerRadius: CGFloat = 10) -> some View {
-        modifier(GlassCell(cornerRadius: cornerRadius))
+    func liquidGlass(
+        cornerRadius: CGFloat = 14,
+        tint: Color? = nil,
+        intensity: Double = 1.0,
+        elevated: Bool = false
+    ) -> some View {
+        modifier(LiquidGlass(
+            cornerRadius: cornerRadius,
+            tint: tint,
+            intensity: intensity,
+            elevated: elevated
+        ))
+    }
+
+    // Back-compat: legacy glassCell call sites get the new look automatically
+    func glassCell(cornerRadius: CGFloat = 14) -> some View {
+        modifier(LiquidGlass(cornerRadius: cornerRadius))
     }
 }
 
