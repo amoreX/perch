@@ -20,6 +20,11 @@ enum DN {
     static let success         = Color(hex: 0x4A9E5C)
     static let warning         = Color(hex: 0xD4A843)
 
+    // Dark navy used as the tint for active glass buttons. Deliberately
+    // dim so SwiftUI's glass style does NOT auto-invert the foreground to
+    // black; the white label stays white against this surface.
+    static let activeAccent    = Color(hex: 0x1A3566)
+
     // Agent brand colors
     static let claudeOrange    = Color(hex: 0xD97757)
 

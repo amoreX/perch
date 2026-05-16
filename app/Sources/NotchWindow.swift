@@ -37,6 +37,13 @@ class DanotchPanel: NSPanel {
     // Must be true for TextField to receive keyboard input
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    // Make AppKit *render* controls as active (so .buttonStyle(.glass) shows
+    // its proper key-window appearance) without actually stealing focus from
+    // the foreground app. We never call makeKey unless the chat input is
+    // being focused; until then the panel is visually key but inactive.
+    override var isKeyWindow: Bool { true }
+    override var isMainWindow: Bool { false }
 }
 
 class NotchWindowController: NSObject {

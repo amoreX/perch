@@ -237,14 +237,14 @@ struct NotchShellView: View {
         .frame(width: shapeWidth, height: notchH)
     }
 
-    /// A pill-shaped text button. Active state is the same glass capsule with
-    /// a brighter white tint — never `.glassProminent` because Apple inverts
-    /// its foreground to black against light tints.
+    /// A pill-shaped text button. Active uses a deep navy tint so the glass
+    /// stays dark and the white label has clean contrast — never a light tint
+    /// (which makes Apple's button style invert the foreground to black).
     private func topBarTab(_ label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(label, action: action)
             .buttonStyle(.glass)
             .controlSize(.small)
-            .tint(isActive ? .white.opacity(0.22) : .clear)
+            .tint(isActive ? DN.activeAccent : .clear)
             .foregroundStyle(.white)
             .clipShape(.capsule)
     }
@@ -257,7 +257,7 @@ struct NotchShellView: View {
         }
         .buttonStyle(.glass)
         .controlSize(.small)
-        .tint(isActive ? .white.opacity(0.22) : .clear)
+        .tint(isActive ? DN.activeAccent : .clear)
         .foregroundStyle(.white)
         .clipShape(.capsule)
         .overlay(alignment: .topTrailing) {
