@@ -335,10 +335,17 @@ struct NotchShoulder: Shape {
 
     let corner: Corner
 
-    // SwiftUI/CoreGraphics coordinates: y=0 is top, y=h is bottom.
-    // Each shoulder is a black square with one of its BOTTOM corners
-    // carved by a concave quarter-circle (arc center = the corner itself,
-    // radius = side length).
+    // Each shoulder is a black square with one TOP-INNER corner replaced
+    // by a CONCAVE quarter-circle bite. The bite's circular arc continues
+    // the notch's rounded outside corner outward into the menu bar so the
+    // two curves form a single continuous tangent.
+    //
+    // Coords: y=0 top, y=h bottom.
+    //
+    // To make a CONCAVE corner (a bite, not a fillet), the arc's CENTER
+    // sits at the *inner* corner of the bite (one quadrant away from the
+    // physical corner being carved), so the arc curves AWAY from the
+    // square's body.
     func path(in rect: CGRect) -> Path {
         var p = Path()
         let w = rect.width
@@ -347,35 +354,52 @@ struct NotchShoulder: Shape {
 
         switch corner {
         case .bottomRight:
-            // LEFT shoulder. Sits with its right edge flush to the notch's
-            // left edge. Carving the bottom-right makes the arc curl up-and-
-            // to-the-right, hugging the notch's bottom-left rounded corner.
-            p.move(to: CGPoint(x: 0, y: 0))                                      // top-left
-            p.addLine(to: CGPoint(x: w, y: 0))                                   // top-right
-            p.addLine(to: CGPoint(x: w, y: h - r))                               // down right edge to start of arc
-            // Concave arc: from (w, h-r) down to (w-r, h). Center is the
-            // bottom-right corner (w, h). Angle 0° = +x, 90° = +y (down).
-            // Going from 270° (which in SwiftUI's y-down system is the
-            // point directly above center) ... actually keep it simple:
-            // use a quadratic bezier with control = the carved corner.
-            p.addQuadCurve(
-                to: CGPoint(x: w - r, y: h),                                     // bottom, r in from right
-                control: CGPoint(x: w, y: h)                                     // bottom-right corner pulls the curve concave
+            // LEFT shoulder. Concave bite in TOP-RIGHT.
+            //   ┌─────╮      ← bite: curve dips down-then-right
+            //   │      ╲
+            //   │       │
+            //   │       │
+            //   └───────┘
+            // Arc center = (w - r, r) (inner corner of the bite).
+            // Start angle 270° (pointing UP from center → hits (w-r, 0)).
+            // End   angle   0° (pointing RIGHT      → hits (w,   r)).
+            // SwiftUI uses a flipped y-axis, so we pass clockwise: false
+            // to get the geometrically clockwise sweep that produces the
+            // concave bite.
+            p.move(to: CGPoint(x: 0, y: 0))                   // top-left
+            p.addLine(to: CGPoint(x: w - r, y: 0))            // top edge to start of bite
+            p.addArc(
+                center: CGPoint(x: w - r, y: r),
+                radius: r,
+                startAngle: .degrees(270),
+                endAngle: .degrees(0),
+                clockwise: false
             )
-            p.addLine(to: CGPoint(x: 0, y: h))                                   // bottom-left
+            p.addLine(to: CGPoint(x: w, y: h))                // right edge down to bottom-right
+            p.addLine(to: CGPoint(x: 0, y: h))                // bottom-left
             p.closeSubpath()
 
         case .bottomLeft:
-            // RIGHT shoulder. Mirror — left edge flush to the notch's right
-            // edge; carved bottom-left curls up-and-to-the-left.
-            p.move(to: CGPoint(x: w, y: 0))                                      // top-right
-            p.addLine(to: CGPoint(x: 0, y: 0))                                   // top-left
-            p.addLine(to: CGPoint(x: 0, y: h - r))                               // down left edge to start of arc
-            p.addQuadCurve(
-                to: CGPoint(x: r, y: h),                                         // r in from left along bottom
-                control: CGPoint(x: 0, y: h)                                     // bottom-left corner pulls curve concave
+            // RIGHT shoulder. Concave bite in TOP-LEFT.  (mirror)
+            //   ╭─────┐
+            //  ╱      │
+            //  │      │
+            //  │      │
+            //  └──────┘
+            // Arc center = (r, r).
+            // Start angle 180° (LEFT  → hits (0, r)).
+            // End   angle 270° (UP    → hits (r, 0)).
+            p.move(to: CGPoint(x: w, y: 0))                   // top-right
+            p.addLine(to: CGPoint(x: w, y: h))                // right edge down
+            p.addLine(to: CGPoint(x: 0, y: h))                // bottom-left
+            p.addLine(to: CGPoint(x: 0, y: r))                // left edge up to start of bite
+            p.addArc(
+                center: CGPoint(x: r, y: r),
+                radius: r,
+                startAngle: .degrees(180),
+                endAngle: .degrees(270),
+                clockwise: false
             )
-            p.addLine(to: CGPoint(x: w, y: h))                                   // bottom-right
             p.closeSubpath()
         }
         return p
