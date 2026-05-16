@@ -124,25 +124,37 @@ struct NotchShellView: View {
 
     // Anti-aliased "shoulders" that bevel the junction between the notch's
     // rounded bottom corners and the flat menu-bar edge above. Each shoulder
-    // is a small black square with one concave rounded corner carved out;
-    // placed flush against the outside of the notch's bottom corners, so the
-    // arc curves outward into the menu bar. Same trick used by Notchbar /
-    // AlDente / the macOS hardware notch itself.
+    // is a small black tile with one concave rounded corner carved out, sat
+    // flush against the OUTSIDE of the notch's bottom corner — the carved
+    // arc curves outward so the notch+menu-bar meeting reads as one smooth
+    // fillet.
+    //
+    //  ┌── menu bar ─────────────┐    ┌── menu bar ─────────────┐
+    //  │                         │    │                         │
+    //  │         ╲___notch___╱   │ →  │      ╲ ╲___notch___╱ ╱  │
+    //  │                         │    │       └─ shoulders ─┘   │
+    //
+    // Left shoulder: the carved corner is BOTTOM-RIGHT (arc curls toward
+    //   the notch's outside bottom-left corner).
+    // Right shoulder: mirror — carved corner is BOTTOM-LEFT.
     private var shoulders: some View {
         let size = bottomRadius
-        return HStack(spacing: 0) {
-            NotchShoulder(corner: .topRight)
+        return ZStack(alignment: .topLeading) {
+            // Left shoulder, anchored to the parent's top-leading edge and
+            // shifted LEFT by its own width so it sits just outside the notch.
+            NotchShoulder(corner: .bottomRight)
                 .fill(Color.black)
                 .frame(width: size, height: size)
-                .offset(x: 0.5)             // sub-pixel kiss to avoid hairline gap
-            Spacer(minLength: 0)
-            NotchShoulder(corner: .topLeft)
+                .offset(x: -size + 0.5, y: 0)
+
+            // Right shoulder, pushed all the way to the trailing edge of the
+            // notch (shapeWidth) and then OUTSIDE by its own width.
+            NotchShoulder(corner: .bottomLeft)
                 .fill(Color.black)
                 .frame(width: size, height: size)
-                .offset(x: -0.5)
+                .offset(x: shapeWidth - 0.5, y: 0)
         }
-        // The whole shoulder strip is shapeWidth + 2 shoulders wide.
-        .frame(width: shapeWidth + size * 2, alignment: .top)
+        .frame(width: shapeWidth, alignment: .topLeading)
         .allowsHitTesting(false)
     }
 
@@ -318,11 +330,15 @@ struct NotchShellView: View {
 // its hardware notch and by display-mask apps like Notchbar).
 struct NotchShoulder: Shape {
     enum Corner {
-        case topLeft, topRight
+        case bottomLeft, bottomRight
     }
 
     let corner: Corner
 
+    // SwiftUI/CoreGraphics coordinates: y=0 is top, y=h is bottom.
+    // Each shoulder is a black square with one of its BOTTOM corners
+    // carved by a concave quarter-circle (arc center = the corner itself,
+    // radius = side length).
     func path(in rect: CGRect) -> Path {
         var p = Path()
         let w = rect.width
@@ -330,35 +346,36 @@ struct NotchShoulder: Shape {
         let r = min(w, h)
 
         switch corner {
-        case .topRight:
-            // Solid square with top-right corner carved into a concave arc.
-            // Sweep arc anchor: center at (w, 0), radius = r, going from the
-            // right edge (90°) up around to the top edge (180°).
-            p.move(to: CGPoint(x: 0, y: 0))
-            p.addLine(to: CGPoint(x: w - r, y: 0))
-            p.addArc(
-                center: CGPoint(x: w, y: r),
-                radius: r,
-                startAngle: .degrees(180),
-                endAngle: .degrees(270),
-                clockwise: true
+        case .bottomRight:
+            // LEFT shoulder. Sits with its right edge flush to the notch's
+            // left edge. Carving the bottom-right makes the arc curl up-and-
+            // to-the-right, hugging the notch's bottom-left rounded corner.
+            p.move(to: CGPoint(x: 0, y: 0))                                      // top-left
+            p.addLine(to: CGPoint(x: w, y: 0))                                   // top-right
+            p.addLine(to: CGPoint(x: w, y: h - r))                               // down right edge to start of arc
+            // Concave arc: from (w, h-r) down to (w-r, h). Center is the
+            // bottom-right corner (w, h). Angle 0° = +x, 90° = +y (down).
+            // Going from 270° (which in SwiftUI's y-down system is the
+            // point directly above center) ... actually keep it simple:
+            // use a quadratic bezier with control = the carved corner.
+            p.addQuadCurve(
+                to: CGPoint(x: w - r, y: h),                                     // bottom, r in from right
+                control: CGPoint(x: w, y: h)                                     // bottom-right corner pulls the curve concave
             )
-            p.addLine(to: CGPoint(x: w, y: h))
-            p.addLine(to: CGPoint(x: 0, y: h))
+            p.addLine(to: CGPoint(x: 0, y: h))                                   // bottom-left
             p.closeSubpath()
-        case .topLeft:
-            // Mirror image of topRight.
-            p.move(to: CGPoint(x: w, y: 0))
-            p.addLine(to: CGPoint(x: r, y: 0))
-            p.addArc(
-                center: CGPoint(x: 0, y: r),
-                radius: r,
-                startAngle: .degrees(270),
-                endAngle: .degrees(360),
-                clockwise: true
+
+        case .bottomLeft:
+            // RIGHT shoulder. Mirror — left edge flush to the notch's right
+            // edge; carved bottom-left curls up-and-to-the-left.
+            p.move(to: CGPoint(x: w, y: 0))                                      // top-right
+            p.addLine(to: CGPoint(x: 0, y: 0))                                   // top-left
+            p.addLine(to: CGPoint(x: 0, y: h - r))                               // down left edge to start of arc
+            p.addQuadCurve(
+                to: CGPoint(x: r, y: h),                                         // r in from left along bottom
+                control: CGPoint(x: 0, y: h)                                     // bottom-left corner pulls curve concave
             )
-            p.addLine(to: CGPoint(x: 0, y: h))
-            p.addLine(to: CGPoint(x: w, y: h))
+            p.addLine(to: CGPoint(x: w, y: h))                                   // bottom-right
             p.closeSubpath()
         }
         return p
