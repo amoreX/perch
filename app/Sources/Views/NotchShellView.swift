@@ -151,10 +151,12 @@ struct NotchShellView: View {
     //
     // Left shoulder carved at BOTTOM-RIGHT, right shoulder at BOTTOM-LEFT.
     private var shoulders: some View {
-        // Shoulders only exist while expanded — collapse them to size 0
-        // when the notch is closed so the spring on bottomRadius / expanded
-        // also animates the shoulders in and out smoothly.
-        let size: CGFloat = expanded && !viewModel.isPeeking ? bottomRadius : 0
+        // Shoulders only exist while expanded — collapse to size 0 when
+        // the notch is closed so the spring on `expanded` also animates
+        // them in and out smoothly. Decoupled from bottomRadius so the
+        // bevel stays small even when the panel uses a large outer radius.
+        let shoulderSize: CGFloat = 12
+        let size: CGFloat = expanded && !viewModel.isPeeking ? shoulderSize : 0
         return Color.clear
             .frame(width: shapeWidth, height: size)
             .overlay(alignment: .topLeading) {
