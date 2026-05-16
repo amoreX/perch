@@ -5,30 +5,23 @@ struct NotchContentView: View {
     @State private var chatInputText: String = ""
     @FocusState private var isChatInputFocused: Bool
 
-    private var isExpanded: Bool {
-        viewModel.viewState != .overview
-    }
-
-    private var leftWidth: CGFloat {
-        isExpanded ? 0 : 185
+    private var showLeftColumn: Bool {
+        viewModel.viewState == .overview
     }
 
     var body: some View {
         HStack(spacing: 0) {
-            leftColumn
-                .frame(width: leftWidth)
-                .opacity(isExpanded ? 0 : 1)
-                .clipped()
-
-            dividerBar
-                .opacity(isExpanded ? 0 : 1)
-                .scaleEffect(y: isExpanded ? 0.3 : 1)
-                .frame(width: isExpanded ? 0 : nil)
-                .clipped()
+            // Left column only renders on Home. View-state cross-fade in the shell
+            // handles the swap between Home / Agents / Chat, so there's no in-place
+            // intro animation here.
+            if showLeftColumn {
+                leftColumn
+                    .frame(width: 185)
+                dividerBar
+            }
 
             mainColumn
         }
-        .animation(DN.transition, value: isExpanded)
         .onChange(of: viewModel.shouldFocusChatInput) { _, shouldFocus in
             if shouldFocus {
                 isChatInputFocused = true
