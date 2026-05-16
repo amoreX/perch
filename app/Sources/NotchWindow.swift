@@ -40,8 +40,14 @@ class DanotchPanel: NSPanel {
 }
 
 class NotchWindowController: NSObject {
-    var panel: DanotchPanel!
     let viewModel: NotchViewModel
+    /// One panel per attached NSScreen, keyed by screen.dn_uuid.
+    /// The first panel created hosts the SwiftUI view; secondary panels just
+    /// mirror its frame so the UI stays in one place. We swap which panel is
+    /// "active" as the cursor moves between monitors.
+    private var panels: [String: DanotchPanel] = [:]
+    /// The panel currently hosting the SwiftUI view + reacting to hover.
+    private var activeScreenUUID: String?
     var globalMonitor: Any?
     var localMonitor: Any?
     var scrollMonitor: Any?
@@ -50,38 +56,21 @@ class NotchWindowController: NSObject {
     var collapseTimer: Timer?
     var swipeAccumulator: CGFloat = 0
 
+    private let panelWidth: CGFloat = 580
+    private let panelHeight: CGFloat = 400
+
+    private var activePanel: DanotchPanel? {
+        if let uuid = activeScreenUUID { return panels[uuid] }
+        return nil
+    }
+
     init(viewModel: NotchViewModel) {
         self.viewModel = viewModel
         super.init()
     }
 
     func show() {
-        guard let screen = NSScreen.main else {
-            print("[Danotch] No main screen found")
-            return
-        }
-
-        let panelWidth: CGFloat = 580
-        let panelHeight: CGFloat = 400
-        let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow]
-
-        let panel = DanotchPanel(
-            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
-            styleMask: styleMask,
-            backing: .buffered,
-            defer: false
-        )
-
-        panel.ignoresMouseEvents = true
-        panel.acceptsMouseMovedEvents = true
-
-        let shellView = NotchShellView(viewModel: viewModel)
-        panel.contentView = NSHostingView(rootView: shellView)
-
-        self.panel = panel
-        positionPanel(on: screen)
-        panel.orderFrontRegardless()
-
+        rebuildPanels()
         startMouseTracking()
         startKeyboardShortcut()
 
@@ -93,7 +82,63 @@ class NotchWindowController: NSObject {
         )
     }
 
-    private func positionPanel(on screen: NSScreen) {
+    /// Tear down existing panels and create a fresh one for every attached
+    /// screen. We do this on initial show and whenever the screen layout
+    /// changes (monitor plug/unplug, resolution change).
+    private func rebuildPanels() {
+        for panel in panels.values {
+            panel.orderOut(nil)
+        }
+        panels.removeAll()
+        activeScreenUUID = nil
+
+        let styleMask: NSWindow.StyleMask = [
+            .borderless, .nonactivatingPanel, .utilityWindow, .hudWindow,
+        ]
+
+        for screen in NSScreen.screens {
+            let panel = DanotchPanel(
+                contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
+                styleMask: styleMask,
+                backing: .buffered,
+                defer: false
+            )
+            panel.ignoresMouseEvents = true
+            panel.acceptsMouseMovedEvents = true
+            positionPanel(panel, on: screen)
+            panel.orderFrontRegardless()
+            panels[screen.dn_uuid] = panel
+        }
+
+        // Pick whichever screen currently has the mouse, falling back to the
+        // main screen, then to any screen.
+        let target = screenForMouse() ?? NSScreen.main ?? NSScreen.screens.first
+        if let target = target {
+            activateScreen(target)
+        }
+    }
+
+    /// Move the SwiftUI host into the panel on `screen` and update tracking
+    /// so that monitor becomes the interactive one.
+    private func activateScreen(_ screen: NSScreen) {
+        let uuid = screen.dn_uuid
+        guard let panel = panels[uuid] else { return }
+        if activeScreenUUID == uuid && panel.contentView is NSHostingView<NotchShellView> {
+            return
+        }
+
+        // Strip the SwiftUI host from the previously active panel, if any.
+        if let prevUUID = activeScreenUUID, prevUUID != uuid, let prev = panels[prevUUID] {
+            prev.contentView = nil
+            prev.ignoresMouseEvents = true
+        }
+
+        let shellView = NotchShellView(viewModel: viewModel)
+        panel.contentView = NSHostingView(rootView: shellView)
+        activeScreenUUID = uuid
+    }
+
+    private func positionPanel(_ panel: DanotchPanel, on screen: NSScreen) {
         let w = panel.frame.width
         let h = panel.frame.height
         panel.setFrameOrigin(NSPoint(
@@ -103,8 +148,13 @@ class NotchWindowController: NSObject {
     }
 
     @objc private func screenChanged() {
-        guard let screen = NSScreen.main else { return }
-        positionPanel(on: screen)
+        rebuildPanels()
+    }
+
+    /// Return the NSScreen currently under the cursor (in global coords).
+    private func screenForMouse() -> NSScreen? {
+        let mouse = NSEvent.mouseLocation
+        return NSScreen.screens.first { $0.frame.contains(mouse) }
     }
 
     // MARK: - Global Keyboard Shortcut (Cmd+Shift+Space)
@@ -142,11 +192,14 @@ class NotchWindowController: NSObject {
             if self.viewModel.isExpanded {
                 self.collapse()
             } else {
+                // Drop down on whichever monitor currently has the cursor.
+                if let screen = self.screenForMouse() {
+                    self.activateScreen(screen)
+                }
                 self.expand()
                 self.viewModel.viewState = .overview
                 self.viewModel.shouldFocusChatInput = true
-                // Make panel key so TextField can receive input
-                self.panel.makeKeyAndOrderFront(nil)
+                self.activePanel?.makeKeyAndOrderFront(nil)
                 NSApp.activate(ignoringOtherApps: true)
             }
         }
@@ -192,7 +245,9 @@ class NotchWindowController: NSObject {
     }
 
     private func checkMouse() {
-        guard let screen = NSScreen.main else { return }
+        // Mouse position is in global coordinates, which span every attached
+        // display, so we resolve which screen the cursor is on each tick.
+        guard let screen = screenForMouse() else { return }
         let mouse = NSEvent.mouseLocation
 
         let cx = screen.frame.midX
@@ -225,6 +280,11 @@ class NotchWindowController: NSObject {
         }
 
         if hit {
+            // The cursor is now on `screen`; make sure the SwiftUI host lives
+            // there so this monitor's panel is the interactive one.
+            if activeScreenUUID != screen.dn_uuid {
+                activateScreen(screen)
+            }
             collapseTimer?.invalidate()
             collapseTimer = nil
             if !viewModel.isExpanded {
@@ -264,7 +324,7 @@ class NotchWindowController: NSObject {
     }
 
     private func expand() {
-        panel.ignoresMouseEvents = false
+        activePanel?.ignoresMouseEvents = false
         viewModel.restoreOrResetView()
         withAnimation(DN.expandSpring) {
             viewModel.isExpanded = true
@@ -280,8 +340,8 @@ class NotchWindowController: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             guard let self = self else { return }
             if !self.viewModel.isExpanded {
-                self.panel.ignoresMouseEvents = true
-                self.panel.resignKey()
+                self.activePanel?.ignoresMouseEvents = true
+                self.activePanel?.resignKey()
             }
         }
     }
@@ -308,6 +368,15 @@ class NotchWindowController: NSObject {
 }
 
 extension NSScreen {
+    /// Stable per-display identifier. Falls back to the address of the
+    /// NSScreen if the device description is missing.
+    var dn_uuid: String {
+        if let n = deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+            return "display-\(n.uint32Value)"
+        }
+        return "screen-\(ObjectIdentifier(self).hashValue)"
+    }
+
     var hasNotch: Bool {
         safeAreaInsets.top > 0
     }
