@@ -307,35 +307,27 @@ struct ProviderConfig: Identifiable {
     var isVerified: Bool { verifiedAt != nil }
 
     static let defaultModels: [String: String] = [
-        "anthropic": "claude-sonnet-4-20250514",
+        "anthropic": "claude-sonnet-4-6",
         "openai": "gpt-5",
-        "openrouter": "anthropic/claude-sonnet-4-20250514",
+        "openrouter": "anthropic/claude-sonnet-4-6",
     ]
 
-    static let availableModels: [String: [String]] = [
+    /// (apiId, friendlyLabel) for each provider, newest first, capped at 3.
+    static let availableModels: [String: [(id: String, label: String)]] = [
         "anthropic": [
-            "claude-sonnet-4-20250514",
-            "claude-opus-4-20250514",
-            "claude-haiku-4-20250514",
-            "claude-3-7-sonnet-latest",
-            "claude-3-5-sonnet-latest",
-            "claude-3-5-haiku-latest",
+            ("claude-opus-4-7",   "Opus 4.7"),
+            ("claude-sonnet-4-6", "Sonnet 4.6"),
+            ("claude-haiku-4-5",  "Haiku 4.5"),
         ],
         "openai": [
-            "gpt-5",
-            "gpt-5-mini",
-            "gpt-4o",
-            "gpt-4o-mini",
-            "o3",
-            "o3-mini",
+            ("gpt-5",      "GPT-5"),
+            ("gpt-5-mini", "GPT-5 mini"),
+            ("gpt-4o",     "GPT-4o"),
         ],
         "openrouter": [
-            "anthropic/claude-sonnet-4-20250514",
-            "anthropic/claude-opus-4-20250514",
-            "openai/gpt-5",
-            "openai/gpt-4o",
-            "google/gemini-2.5-pro",
-            "meta-llama/llama-3.3-70b",
+            ("anthropic/claude-opus-4-7",   "Opus 4.7"),
+            ("anthropic/claude-sonnet-4-6", "Sonnet 4.6"),
+            ("openai/gpt-5",                "GPT-5"),
         ],
     ]
 }

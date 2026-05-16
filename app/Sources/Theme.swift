@@ -177,6 +177,53 @@ extension View {
         )
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
+
+    /// Smart edge fade for `ScrollView` — fades the top edge only while the
+    /// content is scrolled away from the top, and the bottom edge only while
+    /// it's away from the bottom. Snaps off cleanly at either extreme.
+    func smartScrollFade(_ length: CGFloat = 24) -> some View {
+        modifier(SmartScrollFade(length: length))
+    }
+}
+
+private struct SmartScrollFade: ViewModifier {
+    let length: CGFloat
+    @State private var fadeTop: Bool = false
+    @State private var fadeBottom: Bool = true
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollGeometryChange(for: ScrollEdges.self) { geo in
+                let off = geo.contentOffset.y
+                let inset = geo.contentInsets.top
+                let max  = geo.contentSize.height - geo.containerSize.height
+                let nearTop    = off <= inset + 1
+                let nearBottom = off >= max - 1
+                return ScrollEdges(top: !nearTop, bottom: !nearBottom)
+            } action: { _, new in
+                withAnimation(.easeOut(duration: 0.18)) {
+                    fadeTop = new.top
+                    fadeBottom = new.bottom
+                }
+            }
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: fadeTop    ? .clear : .black, location: 0.0),
+                        .init(color: .black,                       location: Double(length) / 400),
+                        .init(color: .black,                       location: 1 - Double(length) / 400),
+                        .init(color: fadeBottom ? .clear : .black, location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+    }
+}
+
+private struct ScrollEdges: Equatable {
+    var top: Bool
+    var bottom: Bool
 }
 
 // MARK: - Set Toggle Helper

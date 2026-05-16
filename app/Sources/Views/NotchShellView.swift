@@ -60,7 +60,7 @@ struct NotchShellView: View {
                 expandedContent
                     .padding(.top, notchH + 1)
                     .padding(.horizontal, DN.spaceMD)
-                    .padding(.bottom, DN.spaceMD)
+                    .padding(.bottom, bottomPaddingForState)
                     .frame(width: shapeWidth, alignment: .top)
                     .id(viewModel.viewState.transitionKey)
                     .transition(.opacity)
@@ -166,6 +166,17 @@ struct NotchShellView: View {
     }
 
     // MARK: - Expanded Content
+
+    /// Scrolling views push their content to the notch's bottom edge so the
+    /// smartScrollFade lands directly on the rounded panel boundary.
+    private var bottomPaddingForState: CGFloat {
+        switch viewModel.viewState {
+        case .stats, .processList, .settings, .notifications:
+            return 0
+        default:
+            return DN.spaceMD
+        }
+    }
 
     @ViewBuilder
     private var expandedContent: some View {
@@ -696,8 +707,10 @@ struct SettingsPanel: View {
                     AppConnectionRow(viewModel: viewModel, appType: "github", displayName: "GitHub", icon: "chevron.left.forwardslash.chevron.right")
                 }
             }
+            .padding(.bottom, 14)
         }
         .scrollIndicators(.never)
+        .smartScrollFade(28)
         .onAppear { viewModel.loadProviderConfigs() }
     }
 
@@ -720,8 +733,9 @@ struct SettingsPanel: View {
             VStack(alignment: .leading, spacing: 8) {
                 content()
             }
+            .frame(maxWidth: .infinity, alignment: .leading) // ALL cards fill
             .padding(12)
-            .contentCard()
+            .contentCard(cornerRadius: 20)                   // outer=32, padding=12 → inner≥20
 
             if let footer = footer {
                 Text(footer)
@@ -733,9 +747,12 @@ struct SettingsPanel: View {
     }
 
     private func settingsToggle(_ label: String, _ binding: Binding<Bool>) -> some View {
-        Toggle(label, isOn: binding)
-            .toggleStyle(.switch)
-            .controlSize(.small)
+        Toggle(isOn: binding) {
+            Text(label)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .toggleStyle(.switch)
+        .controlSize(.small)
     }
 
     // MARK: - Default provider row
@@ -779,7 +796,10 @@ struct SettingsPanel: View {
             }
         )) {
             Label(widget.label, systemImage: widget.icon)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .toggleStyle(.switch)
+        .controlSize(.small)
         .disabled(!isPinned && atMax)
     }
 }
@@ -865,8 +885,8 @@ struct ProviderRow: View {
                         get: { modelId.isEmpty ? defaultModel : modelId },
                         set: { modelId = $0 }
                     )) {
-                        ForEach(ProviderConfig.availableModels[providerType] ?? [defaultModel], id: \.self) { m in
-                            Text(m).tag(m)
+                        ForEach(ProviderConfig.availableModels[providerType] ?? [], id: \.id) { m in
+                            Text(m.label).tag(m.id)
                         }
                     }
                     .pickerStyle(.menu)
