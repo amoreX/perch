@@ -344,7 +344,7 @@ struct NotchContentView: View {
         }
         .padding(.horizontal, DN.spaceMD)
         .padding(.vertical, DN.spaceSM)
-        .background(.regularMaterial, in: .capsule)
+        .glassEffect(.regular, in: .capsule)
         // Hit area covers the whole capsule, so clicking anywhere — not just
         // on the placeholder glyph — focuses the field.
         .contentShape(.capsule)
@@ -353,21 +353,19 @@ struct NotchContentView: View {
 
     private var sendButton: some View {
         let enabled = !chatInputText.trimmingCharacters(in: .whitespaces).isEmpty
-        return ZStack {
-            Circle()
-                .fill(enabled ? DN.activeAccent : Color.white.opacity(0.10))
-            Circle()
-                .strokeBorder(Color.white.opacity(enabled ? 0.30 : 0.18), lineWidth: 0.6)
-            Image(systemName: "arrow.up")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white)
-        }
-        .frame(width: 26, height: 26)
-        .opacity(enabled ? 1.0 : 0.55)
-        .contentShape(.circle)
-        .onTapGesture {
-            if enabled { submitChat() }
-        }
+        return Image(systemName: "arrow.up")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 26, height: 26)
+            .glassEffect(
+                enabled ? Glass.regular.tint(DN.activeAccent) : Glass.regular,
+                in: .circle
+            )
+            .opacity(enabled ? 1.0 : 0.55)
+            .contentShape(.circle)
+            .onTapGesture {
+                if enabled { submitChat() }
+            }
     }
 
     private func submitChat() {

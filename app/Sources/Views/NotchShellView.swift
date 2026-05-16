@@ -32,7 +32,10 @@ struct NotchShellView: View {
 
     private var bottomRadius: CGFloat {
         if viewModel.isPeeking { return 12 }
-        return expanded ? 16 : 8
+        // Apple nested-corner rule: outer = inner + padding.
+        // Inner capsule ≈ 19pt half-height; outer padding = spaceMD (12).
+        // → 31pt; round to 32pt for a clean visual.
+        return expanded ? 32 : 8
     }
 
     var body: some View {
