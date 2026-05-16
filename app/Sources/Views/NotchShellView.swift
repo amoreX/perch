@@ -141,13 +141,13 @@ struct NotchShellView: View {
         return Color.clear
             .frame(width: shapeWidth, height: size)
             .overlay(alignment: .topLeading) {
-                NotchShoulder(corner: .bottomRight)
+                NotchShoulder(corner: .bottomLeft)
                     .fill(Color.black)
                     .frame(width: size, height: size)
                     .offset(x: -size + 0.5, y: 0)
             }
             .overlay(alignment: .topTrailing) {
-                NotchShoulder(corner: .bottomLeft)
+                NotchShoulder(corner: .bottomRight)
                     .fill(Color.black)
                     .frame(width: size, height: size)
                     .offset(x: size - 0.5, y: 0)
