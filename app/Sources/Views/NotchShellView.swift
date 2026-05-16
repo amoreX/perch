@@ -82,6 +82,11 @@ struct NotchShellView: View {
                 style: .continuous
             )
         )
+        // Shoulders sit OUTSIDE the clip so they can extend left/right of
+        // the notch shape and visually fillet the menu-bar junction.
+        .overlay(alignment: .top) {
+            shoulders
+        }
         .onHover { hovering in
             viewModel.mouseInContent = hovering
             if viewModel.isPeeking {
@@ -113,9 +118,32 @@ struct NotchShellView: View {
             style: .continuous
         )
 
-        // Pitch black, always. No material, no tint stack, no rim light —
-        // the shell is the physical notch extended, not a translucent surface.
+        // Pitch black, always.
         return shape.fill(Color.black)
+    }
+
+    // Anti-aliased "shoulders" that bevel the junction between the notch's
+    // rounded bottom corners and the flat menu-bar edge above. Each shoulder
+    // is a small black square with one concave rounded corner carved out;
+    // placed flush against the outside of the notch's bottom corners, so the
+    // arc curves outward into the menu bar. Same trick used by Notchbar /
+    // AlDente / the macOS hardware notch itself.
+    private var shoulders: some View {
+        let size = bottomRadius
+        return HStack(spacing: 0) {
+            NotchShoulder(corner: .topRight)
+                .fill(Color.black)
+                .frame(width: size, height: size)
+                .offset(x: 0.5)             // sub-pixel kiss to avoid hairline gap
+            Spacer(minLength: 0)
+            NotchShoulder(corner: .topLeft)
+                .fill(Color.black)
+                .frame(width: size, height: size)
+                .offset(x: -0.5)
+        }
+        // The whole shoulder strip is shapeWidth + 2 shoulders wide.
+        .frame(width: shapeWidth + size * 2, alignment: .top)
+        .allowsHitTesting(false)
     }
 
     // MARK: - Expanded Content
@@ -279,6 +307,62 @@ struct NotchShellView: View {
             }
     }
 
+}
+
+// MARK: - Notch shoulder shape
+//
+// A unit square with one rounded *concave* corner. Used to bevel the
+// junction between the notch and the screen's top edge. The carved corner
+// is positioned so the arc curves outward, away from the menu bar, creating
+// the visual illusion of a smooth fillet (the same trick used by macOS for
+// its hardware notch and by display-mask apps like Notchbar).
+struct NotchShoulder: Shape {
+    enum Corner {
+        case topLeft, topRight
+    }
+
+    let corner: Corner
+
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let w = rect.width
+        let h = rect.height
+        let r = min(w, h)
+
+        switch corner {
+        case .topRight:
+            // Solid square with top-right corner carved into a concave arc.
+            // Sweep arc anchor: center at (w, 0), radius = r, going from the
+            // right edge (90°) up around to the top edge (180°).
+            p.move(to: CGPoint(x: 0, y: 0))
+            p.addLine(to: CGPoint(x: w - r, y: 0))
+            p.addArc(
+                center: CGPoint(x: w, y: r),
+                radius: r,
+                startAngle: .degrees(180),
+                endAngle: .degrees(270),
+                clockwise: true
+            )
+            p.addLine(to: CGPoint(x: w, y: h))
+            p.addLine(to: CGPoint(x: 0, y: h))
+            p.closeSubpath()
+        case .topLeft:
+            // Mirror image of topRight.
+            p.move(to: CGPoint(x: w, y: 0))
+            p.addLine(to: CGPoint(x: r, y: 0))
+            p.addArc(
+                center: CGPoint(x: 0, y: r),
+                radius: r,
+                startAngle: .degrees(270),
+                endAngle: .degrees(360),
+                clockwise: true
+            )
+            p.addLine(to: CGPoint(x: 0, y: h))
+            p.addLine(to: CGPoint(x: w, y: h))
+            p.closeSubpath()
+        }
+        return p
+    }
 }
 
 // MARK: - Notifications Panel
