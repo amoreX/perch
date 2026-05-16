@@ -516,26 +516,6 @@ struct SettingsPanel: View {
     @ObservedObject var viewModel: NotchViewModel
 
     var body: some View {
-        ZStack {
-            // Progressive blur backdrop — a gradient that extends and blurs
-            // behind the form controls per .backgroundExtensionEffect().
-            LinearGradient(
-                colors: [
-                    Color(red: 0.10, green: 0.10, blue: 0.14),
-                    Color(red: 0.05, green: 0.05, blue: 0.08),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .backgroundExtensionEffect()
-            .ignoresSafeArea()
-
-            form
-        }
-    }
-
-    private var form: some View {
         Form {
             Section("Chat") {
                 Toggle("Open chat on send", isOn: $viewModel.settings.openChatOnSend)
@@ -690,71 +670,13 @@ struct ProviderRow: View {
     }
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 10) {
-                LabeledContent("API key") {
-                    SecureField("sk-…", text: $apiKey)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
-                }
-
-                LabeledContent("Model") {
-                    TextField(defaultModel, text: $modelId)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
-                }
-
-                HStack {
-                    Button(isVerifying ? "Verifying…" : (isVerified && apiKey.isEmpty ? "Verified" : "Verify")) {
-                        guard !apiKey.isEmpty else { return }
-                        let model = modelId.isEmpty ? defaultModel : modelId
-                        viewModel.verifyProviderKey(provider: providerType, apiKey: apiKey, modelId: model)
-                    }
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
-                    .tint(.clear)
-                    .disabled(apiKey.isEmpty || isVerifying)
-
-                    Button("Save") {
-                        guard !apiKey.isEmpty else { return }
-                        let model = modelId.isEmpty ? defaultModel : modelId
-                        viewModel.saveProviderConfig(provider: providerType, apiKey: apiKey, modelId: model)
-                        apiKey = ""
-                    }
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.small)
-                    .tint(.accentColor)
-                    .disabled(apiKey.isEmpty)
-
-                    Spacer()
-
-                    if isConfigured {
-                        Button(role: .destructive) {
-                            viewModel.deleteProviderConfig(provider: providerType)
-                            apiKey = ""
-                            modelId = defaultModel
-                        } label: {
-                            Text("Delete")
-                        }
-                        .buttonStyle(.glass)
-                        .controlSize(.small)
-                        .tint(.clear)
-                    }
-                }
-
-                if let error = error {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .lineLimit(2)
-                }
-            }
-            .padding(.top, 4)
-            .onAppear {
-                if modelId.isEmpty { modelId = config?.modelId ?? defaultModel }
-            }
-        } label: {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header row — tappable to toggle expansion.
             HStack {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 Label(displayName, systemImage: icon)
                 Spacer()
                 if isActive {
@@ -765,9 +687,102 @@ struct ProviderRow: View {
                     Text(config?.modelId ?? "")
                         .foregroundStyle(.secondary)
                         .font(.caption)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(DN.transition) {
+                    isExpanded.toggle()
+                    if isExpanded && modelId.isEmpty {
+                        modelId = config?.modelId ?? defaultModel
+                    }
+                }
+            }
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    fieldLabel("API key")
+                    SecureField("sk-…", text: $apiKey)
+                        .textFieldStyle(.plain)
+                        .font(.system(.body, design: .monospaced))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
+                        )
+
+                    fieldLabel("Model")
+                    TextField(defaultModel, text: $modelId)
+                        .textFieldStyle(.plain)
+                        .font(.system(.body, design: .monospaced))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
+                        )
+
+                    HStack(spacing: 8) {
+                        Button(isVerifying ? "Verifying…" : (isVerified && apiKey.isEmpty ? "Verified" : "Verify")) {
+                            guard !apiKey.isEmpty else { return }
+                            let model = modelId.isEmpty ? defaultModel : modelId
+                            viewModel.verifyProviderKey(provider: providerType, apiKey: apiKey, modelId: model)
+                        }
+                        .buttonStyle(.glass)
+                        .controlSize(.small)
+                        .tint(.clear)
+                        .disabled(apiKey.isEmpty || isVerifying)
+
+                        Button("Save") {
+                            guard !apiKey.isEmpty else { return }
+                            let model = modelId.isEmpty ? defaultModel : modelId
+                            viewModel.saveProviderConfig(provider: providerType, apiKey: apiKey, modelId: model)
+                            apiKey = ""
+                        }
+                        .buttonStyle(.glass)
+                        .controlSize(.small)
+                        .tint(DN.activeAccent)
+                        .foregroundStyle(.white)
+                        .disabled(apiKey.isEmpty)
+
+                        Spacer()
+
+                        if isConfigured {
+                            Button("Delete", role: .destructive) {
+                                viewModel.deleteProviderConfig(provider: providerType)
+                                apiKey = ""
+                                modelId = defaultModel
+                            }
+                            .buttonStyle(.glass)
+                            .controlSize(.small)
+                            .tint(.clear)
+                        }
+                    }
+
+                    if let error = error {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .lineLimit(2)
+                    }
+                }
+                .padding(.top, 10)
+                .padding(.leading, 22)
+                .transition(.opacity)
+                .onAppear {
+                    if modelId.isEmpty { modelId = config?.modelId ?? defaultModel }
                 }
             }
         }
+    }
+
+    private func fieldLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 }
 

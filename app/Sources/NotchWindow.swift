@@ -333,6 +333,11 @@ class NotchWindowController: NSObject {
     private func expand() {
         activePanel?.ignoresMouseEvents = false
         viewModel.restoreOrResetView()
+        // .nonactivatingPanel + makeKeyAndOrderFront makes the panel key —
+        // so SwiftUI/AppKit renders controls in their proper active state —
+        // WITHOUT activating the app. The foreground app stays main and
+        // keeps its own focus, but our glass buttons no longer look flat.
+        activePanel?.makeKeyAndOrderFront(nil)
         withAnimation(DN.expandSpring) {
             viewModel.isExpanded = true
         }
