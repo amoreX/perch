@@ -357,15 +357,18 @@ struct NotchShoulder: Shape {
             // — to (w-r, h) — bottom edge. clockwise:false in SwiftUI's
             // y-down system produces the visually clockwise sweep that
             // carves a concave bite.
+            // Cubic Bezier between the same endpoints as the old circular
+            // arc, but with control points pulled toward the carved corner
+            // so the bite has continuous curvature — an Apple-style
+            // "squircle" fillet rather than a hard circular arc.
+            let k: CGFloat = 0.55                             // tweak between 0.4 (gentler) and 0.75 (closer to circle)
             p.move(to: CGPoint(x: 0, y: 0))                   // top-left
             p.addLine(to: CGPoint(x: w, y: 0))                // top-right
             p.addLine(to: CGPoint(x: w, y: h - r))            // down right edge to start of bite
-            p.addArc(
-                center: CGPoint(x: w - r, y: h - r),
-                radius: r,
-                startAngle: .degrees(0),                      // (w, h-r) — pointing +x from center
-                endAngle: .degrees(90),                       // (w-r, h) — pointing +y from center
-                clockwise: true
+            p.addCurve(
+                to: CGPoint(x: w - r, y: h),                  // end at bottom edge, r in from right
+                control1: CGPoint(x: w, y: h - r * (1 - k)),  // pull DOWN along right edge
+                control2: CGPoint(x: w - r * (1 - k), y: h)   // pull LEFT along bottom edge
             )
             p.addLine(to: CGPoint(x: 0, y: h))                // bottom-left
             p.closeSubpath()
@@ -380,15 +383,14 @@ struct NotchShoulder: Shape {
             //
             // Arc center = (r, h - r). Sweep from (0, h-r) — left edge —
             // to (r, h) — bottom edge.
+            let k: CGFloat = 0.55
             p.move(to: CGPoint(x: w, y: 0))                   // top-right
             p.addLine(to: CGPoint(x: 0, y: 0))                // top-left
             p.addLine(to: CGPoint(x: 0, y: h - r))            // down left edge to start of bite
-            p.addArc(
-                center: CGPoint(x: r, y: h - r),
-                radius: r,
-                startAngle: .degrees(180),                    // (0, h-r) — pointing -x from center
-                endAngle: .degrees(90),                       // (r, h)  — pointing +y from center
-                clockwise: false
+            p.addCurve(
+                to: CGPoint(x: r, y: h),                      // end at bottom edge, r in from left
+                control1: CGPoint(x: 0, y: h - r * (1 - k)),  // pull DOWN along left edge
+                control2: CGPoint(x: r * (1 - k), y: h)       // pull RIGHT along bottom edge
             )
             p.addLine(to: CGPoint(x: w, y: h))                // bottom-right
             p.closeSubpath()
