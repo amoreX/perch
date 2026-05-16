@@ -163,7 +163,7 @@ enum APIConfig {
 private enum CachedFormatters {
     static let time: DateFormatter = { let f = DateFormatter(); f.dateFormat = "h:mm"; return f }()
     static let period: DateFormatter = { let f = DateFormatter(); f.dateFormat = "a"; return f }()
-    static let date: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEEE, MMM d"; return f }()
+    static let date: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEE, MMM d"; return f }()
     static let shortDate: DateFormatter = { let f = DateFormatter(); f.dateFormat = "MMM d"; return f }()
     static let shortTime: DateFormatter = { let f = DateFormatter(); f.dateFormat = "h:mm a"; return f }()
 }

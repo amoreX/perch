@@ -45,14 +45,22 @@ enum DN {
         .system(size: size, weight: weight, design: .monospaced)
     }
 
-    // MARK: Spacing (8px base)
+    // MARK: Spacing (4px base scale)
 
     static let space2xs: CGFloat = 2
     static let spaceXS:  CGFloat = 4
     static let spaceSM:  CGFloat = 8
-    static let spaceMD:  CGFloat = 16
-    static let spaceLG:  CGFloat = 24
+    static let spaceMD:  CGFloat = 12
+    static let spaceLG:  CGFloat = 20
     static let spaceXL:  CGFloat = 32
+
+    // MARK: Corner radius scale (single source of truth)
+
+    static let radiusXS: CGFloat = 6   // tiny inline pills
+    static let radiusSM: CGFloat = 8   // row hovers, small chips
+    static let radiusMD: CGFloat = 12  // cards, inputs
+    static let radiusLG: CGFloat = 16  // major panels
+    static let radiusXL: CGFloat = 20  // shell-level surfaces
 
     // MARK: Motion
 
@@ -148,22 +156,23 @@ struct LiquidGlass: ViewModifier {
         return content
             .background(
                 ZStack {
-                    // Base material — the actual Tahoe-style blur
+                    // Base material — Tahoe-style blur
                     shape.fill(.ultraThinMaterial)
 
-                    // Slight dark tint for legibility on bright wallpapers
-                    shape.fill(Color.black.opacity(0.18 * intensity))
+                    // Light frosted overlay (instead of heavy dark tint) — keeps glass legible on dark wallpapers
+                    shape.fill(Color.white.opacity(0.04 * intensity))
+                    shape.fill(Color.black.opacity(0.10 * intensity))
 
-                    // Optional hue tint
+                    // Optional hue tint — very subtle
                     if let tint = tint {
-                        shape.fill(tint.opacity(0.10 * intensity))
+                        shape.fill(tint.opacity(0.08 * intensity))
                     }
 
                     // Soft top-to-bottom inner glass sheen
                     shape.fill(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(elevated ? 0.10 : 0.06),
+                                Color.white.opacity(elevated ? 0.12 : 0.07),
                                 Color.white.opacity(0.0),
                             ],
                             startPoint: .top, endPoint: .center
@@ -175,7 +184,7 @@ struct LiquidGlass: ViewModifier {
                         LinearGradient(
                             colors: [
                                 Color.clear,
-                                Color.black.opacity(0.18 * intensity),
+                                Color.black.opacity(0.14 * intensity),
                             ],
                             startPoint: .center, endPoint: .bottom
                         )
@@ -254,13 +263,17 @@ struct ActiveBadge: View {
 
     var body: some View {
         if count > 0 {
-            HStack(spacing: 3) {
-                Circle().fill(DN.warning).frame(width: 4, height: 4)
-                Text("\(count) ACTIVE")
-                    .font(DN.label(7))
-                    .tracking(0.6)
+            HStack(spacing: 4) {
+                Circle().fill(DN.warning).frame(width: 5, height: 5)
+                Text("\(count) active")
+                    .font(DN.body(9, weight: .medium))
                     .foregroundColor(DN.warning)
             }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                Capsule(style: .continuous).fill(DN.warning.opacity(0.10))
+            )
         }
     }
 }

@@ -28,7 +28,7 @@ struct NotchContentView: View {
 
             mainColumn
         }
-        .animation(.easeOut(duration: DN.transitionDuration), value: isExpanded)
+        .animation(DN.transition, value: isExpanded)
         .onChange(of: viewModel.shouldFocusChatInput) { _, shouldFocus in
             if shouldFocus {
                 isChatInputFocused = true
@@ -44,8 +44,8 @@ struct NotchContentView: View {
             // User greeting
             if let name = viewModel.authManager?.userName, !name.isEmpty {
                 Text("Hi, \(name)")
-                    .font(DN.body(11, weight: .medium))
-                    .foregroundColor(DN.textDisabled)
+                    .font(DN.body(11, weight: .regular))
+                    .foregroundColor(DN.textSecondary)
             }
 
             // Time + date
@@ -61,9 +61,8 @@ struct NotchContentView: View {
                     .foregroundColor(DN.textDisabled)
             }
 
-            Text(viewModel.dateString.uppercased())
-                .font(DN.label(9))
-                .tracking(1.2)
+            Text(viewModel.dateString)
+                .font(DN.body(11, weight: .medium))
                 .foregroundColor(DN.textSecondary)
 
             Spacer().frame(height: DN.space2xs)
@@ -135,10 +134,10 @@ struct NotchContentView: View {
 
     private var overviewRightColumn: some View {
         VStack(alignment: .leading, spacing: DN.spaceSM) {
-            Text("AGENTS")
-                .font(DN.label(9))
-                .tracking(1.5)
+            Text("Agents")
+                .font(DN.body(11, weight: .semibold))
                 .foregroundColor(DN.textSecondary)
+                .padding(.leading, 2)
 
             if viewModel.agentMonitor.agents.isEmpty && activeTasks.isEmpty && viewModel.scheduledTasks.isEmpty {
                 emptyAgentState
@@ -178,14 +177,13 @@ struct NotchContentView: View {
     private var emptyAgentState: some View {
         VStack(spacing: DN.spaceSM) {
             Spacer().frame(height: DN.spaceSM)
-            Text("NO AGENTS DETECTED")
-                .font(DN.label(9))
-                .tracking(0.8)
-                .foregroundColor(DN.textDisabled)
+            Text("No agents detected")
+                .font(DN.body(12, weight: .medium))
+                .foregroundColor(DN.textSecondary)
 
             Text("Start Claude Code, Cursor, or Codex\nto see them here")
-                .font(DN.body(10))
-                .foregroundColor(DN.textDisabled.opacity(0.7))
+                .font(DN.body(11))
+                .foregroundColor(DN.textDisabled.opacity(0.8))
                 .multilineTextAlignment(.center)
             Spacer()
         }
@@ -323,16 +321,12 @@ struct NotchContentView: View {
 
     private var chatInputBar: some View {
         HStack(spacing: DN.spaceSM) {
-            Image(systemName: "sparkle")
-                .font(.system(size: 9, weight: .medium))
-                .foregroundColor(isChatInputFocused ? DN.textSecondary : DN.textDisabled)
-
-            TextField("", text: $chatInputText, prompt: Text("Ask anything...")
-                .font(DN.body(11))
+            TextField("", text: $chatInputText, prompt: Text("Ask anything")
+                .font(DN.body(12))
                 .foregroundColor(DN.textDisabled)
             )
             .textFieldStyle(.plain)
-            .font(DN.body(11))
+            .font(DN.body(12))
             .foregroundColor(DN.textPrimary)
             .focused($isChatInputFocused)
             .onChange(of: isChatInputFocused) { _, focused in
@@ -343,28 +337,25 @@ struct NotchContentView: View {
             if !chatInputText.isEmpty {
                 Button(action: { submitChat() }) {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(DN.black)
-                        .frame(width: 18, height: 18)
-                        .background(DN.textDisplay)
-                        .clipShape(Circle())
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 22, height: 22)
+                        .background(
+                            Circle()
+                                .fill(.ultraThinMaterial)
+                                .overlay(Circle().fill(Color.white.opacity(0.16)))
+                                .overlay(Circle().stroke(DN.glassStrokeHi, lineWidth: 0.6))
+                        )
                 }
                 .buttonStyle(.plain)
                 .transition(.scale.combined(with: .opacity))
             }
         }
-        .padding(.horizontal, DN.spaceSM + DN.spaceXS)
-        .padding(.vertical, DN.spaceXS + 2)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(DN.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isChatInputFocused ? DN.borderVisible : DN.border, lineWidth: 1)
-        )
-        .animation(.easeOut(duration: DN.microDuration), value: chatInputText.isEmpty)
-        .animation(.easeOut(duration: DN.microDuration), value: isChatInputFocused)
+        .padding(.horizontal, DN.spaceMD)
+        .padding(.vertical, DN.spaceSM)
+        .liquidGlass(cornerRadius: DN.radiusLG, intensity: isChatInputFocused ? 1.1 : 0.9, elevated: isChatInputFocused)
+        .animation(DN.transition, value: chatInputText.isEmpty)
+        .animation(DN.transition, value: isChatInputFocused)
     }
 
     private func submitChat() {
@@ -386,35 +377,35 @@ struct NotchContentView: View {
     private func tasksSection(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: {
-                withAnimation(.easeOut(duration: DN.microDuration)) {
+                withAnimation(DN.transition) {
                     viewModel.settings.collapsedGroups.toggle("tasks")
                 }
             }) {
                 HStack(spacing: DN.spaceSM) {
                     Image(systemName: "bubble.left.and.text.bubble.right")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(DN.textSecondary)
                         .frame(width: 14)
 
-                    Text("TASKS")
-                        .font(DN.label(9))
-                        .tracking(1.0)
+                    Text("Tasks")
+                        .font(DN.body(11, weight: .semibold))
                         .foregroundColor(DN.textSecondary)
 
                     Text("\(activeTasks.count)")
-                        .font(DN.mono(9, weight: .medium))
+                        .font(DN.mono(10, weight: .medium))
                         .foregroundColor(DN.textDisabled)
 
                     Spacer()
 
                     ActiveBadge(count: activeTasks.filter { $0.isActive }.count)
 
-                    Image(systemName: isTasksExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(DN.textDisabled)
+                        .rotationEffect(.degrees(isTasksExpanded ? 90 : 0))
                 }
-                .padding(.horizontal, DN.spaceSM)
-                .padding(.vertical, DN.spaceXS + 1)
+                .padding(.horizontal, DN.spaceMD)
+                .padding(.vertical, DN.spaceSM)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -435,12 +426,7 @@ struct NotchContentView: View {
                 }
             }
         }
-        .background(DN.surface.opacity(0.4))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(DN.border, lineWidth: 1)
-        )
+        .liquidGlass(cornerRadius: DN.radiusMD, intensity: 0.85)
     }
 
 }
@@ -498,25 +484,24 @@ struct AgentGroupView: View {
             // Group header — tappable to toggle if multiple agents
             Button(action: {
                 guard canCollapse else { return }
-                withAnimation(.easeOut(duration: DN.microDuration)) {
+                withAnimation(DN.transition) {
                     collapsedGroups.toggle(group.id)
                 }
             }) {
                 HStack(spacing: DN.spaceSM) {
                     Image(systemName: group.type.icon)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(group.type.brandColor)
                         .frame(width: 14)
 
-                    Text(group.type.rawValue.uppercased())
-                        .font(DN.label(9))
-                        .tracking(1.0)
+                    Text(group.type.rawValue)
+                        .font(DN.body(11, weight: .semibold))
                         .foregroundColor(group.type.brandColor)
 
                     if group.agents.count > 1 {
                         Text("\(group.agents.count)")
-                            .font(DN.mono(9, weight: .medium))
-                            .foregroundColor(group.type.brandColor.opacity(0.6))
+                            .font(DN.mono(10, weight: .medium))
+                            .foregroundColor(group.type.brandColor.opacity(0.7))
                     }
 
                     Spacer()
@@ -525,13 +510,13 @@ struct AgentGroupView: View {
 
                     if canCollapse {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 9, weight: .semibold))
                             .foregroundColor(DN.textDisabled)
                             .rotationEffect(.degrees(isGroupExpanded ? 90 : 0))
                     }
                 }
-                .padding(.horizontal, DN.spaceSM)
-                .padding(.vertical, DN.spaceXS + 1)
+                .padding(.horizontal, DN.spaceMD)
+                .padding(.vertical, DN.spaceSM)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -548,12 +533,7 @@ struct AgentGroupView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(DN.surface.opacity(0.4))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(DN.border, lineWidth: 1)
-        )
+        .liquidGlass(cornerRadius: DN.radiusMD, tint: group.type.brandColor, intensity: 0.85)
     }
 }
 
@@ -571,9 +551,9 @@ struct AgentSessionRow: View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: DN.spaceSM) {
-                    // Project name or display name
+                    // Project name — primary identifier
                     Text(agent.displayName)
-                        .font(DN.body(11, weight: .medium))
+                        .font(DN.body(12, weight: .semibold))
                         .foregroundColor(DN.textPrimary)
                         .lineLimit(1)
 
@@ -581,7 +561,7 @@ struct AgentSessionRow: View {
 
                     // Elapsed
                     Text(agent.elapsed)
-                        .font(DN.mono(9))
+                        .font(DN.mono(10))
                         .foregroundColor(DN.textDisabled)
                 }
 
@@ -602,37 +582,40 @@ struct AgentSessionRow: View {
                 // Resource usage on hover or expanded
                 if isHovering || !isCompact {
                     HStack(spacing: DN.spaceSM) {
-                        HStack(spacing: 2) {
+                        HStack(spacing: 3) {
                             Text("CPU")
-                                .font(DN.label(7))
-                                .tracking(0.4)
+                                .font(DN.label(9))
+                                .tracking(0.5)
                                 .foregroundColor(DN.textDisabled)
                             Text(String(format: "%.1f%%", agent.cpu))
-                                .font(DN.mono(9))
+                                .font(DN.mono(10))
                                 .foregroundColor(agent.cpu > 1.0 ? DN.warning : DN.textSecondary)
                         }
 
-                        HStack(spacing: 2) {
+                        HStack(spacing: 3) {
                             Text("MEM")
-                                .font(DN.label(7))
-                                .tracking(0.4)
+                                .font(DN.label(9))
+                                .tracking(0.5)
                                 .foregroundColor(DN.textDisabled)
                             Text(String(format: "%.0fMB", agent.memMB))
-                                .font(DN.mono(9))
+                                .font(DN.mono(10))
                                 .foregroundColor(DN.textSecondary)
                         }
 
                         Spacer()
                     }
-                    .padding(.top, 1)
+                    .padding(.top, 2)
                     .transition(.opacity)
                 }
             }
             .padding(.horizontal, DN.spaceSM)
             .padding(.vertical, DN.spaceXS + 2)
             .contentShape(Rectangle())
-            .background(isHovering ? DN.surface : .clear)
-            .animation(.easeOut(duration: DN.microDuration), value: isHovering)
+            .background(
+                RoundedRectangle(cornerRadius: DN.radiusSM, style: .continuous)
+                    .fill(isHovering ? Color.white.opacity(0.06) : Color.clear)
+            )
+            .animation(DN.transition, value: isHovering)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -727,13 +710,11 @@ struct AgentRow: View {
             .padding(.horizontal, DN.spaceSM)
             .padding(.vertical, isCompact ? 6 : 8)
             .contentShape(Rectangle())
-            .background(isHovering ? DN.surface : (isCompact ? .clear : DN.surface.opacity(0.6)))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(!isCompact ? DN.border : .clear, lineWidth: 1)
+            .background(
+                RoundedRectangle(cornerRadius: DN.radiusSM, style: .continuous)
+                    .fill(isHovering ? Color.white.opacity(0.06) : Color.clear)
             )
-            .animation(.easeOut(duration: DN.microDuration), value: isHovering)
+            .animation(DN.transition, value: isHovering)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -1080,7 +1061,7 @@ struct ScheduledTasksSection: View {
         VStack(alignment: .leading, spacing: 1) {
             // Header
             Button(action: {
-                withAnimation(.easeOut(duration: DN.microDuration)) {
+                withAnimation(DN.transition) {
                     viewModel.settings.collapsedGroups.toggle("scheduled")
                 }
             }) {
@@ -1189,7 +1170,7 @@ struct ScheduledTaskRow: View {
                     .buttonStyle(.plain)
 
                     Button(action: {
-                        withAnimation(.easeOut(duration: DN.microDuration)) {
+                        withAnimation(DN.transition) {
                             viewModel.deleteScheduledTask(task.id)
                         }
                     }) {
@@ -1205,7 +1186,7 @@ struct ScheduledTaskRow: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 if task.lastResultSummary != nil {
-                    withAnimation(.easeOut(duration: DN.microDuration)) {
+                    withAnimation(DN.transition) {
                         isExpanded.toggle()
                     }
                 }
@@ -1276,31 +1257,33 @@ struct MiniCalendarView: View {
     }
 
     private var compactCalendar: some View {
-        VStack(spacing: 3) {
-            Text(monthName)
-                .font(DN.label(7))
-                .tracking(1.2)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(monthName.capitalized)
+                .font(DN.body(10, weight: .medium))
                 .foregroundColor(DN.textDisabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 ScrollViewReader { proxy in
-                    HStack(spacing: 1) {
+                    HStack(spacing: 2) {
                         ForEach(1...daysInMonth, id: \.self) { day in
                             VStack(spacing: 2) {
                                 Text(dayOfWeekLabel(day))
-                                    .font(DN.label(5))
-                                    .tracking(0.5)
-                                    .foregroundColor(day == currentDay ? DN.black : DN.textDisabled)
+                                    .font(.system(size: 7, weight: .medium))
+                                    .foregroundColor(day == currentDay ? DN.textPrimary : DN.textDisabled.opacity(0.6))
                                 Text("\(day)")
-                                    .font(DN.mono(8, weight: day == currentDay ? .bold : .regular))
+                                    .font(.system(size: 10, weight: day == currentDay ? .semibold : .regular, design: .rounded))
                                     .foregroundColor(dayColor(day))
+                                    .monospacedDigit()
                             }
-                            .frame(width: 18, height: 24)
+                            .frame(width: 20, height: 26)
                             .background {
                                 if day == currentDay {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(DN.textDisplay)
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(Color.white.opacity(0.14))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                .stroke(DN.glassStrokeHi, lineWidth: 0.6)
+                                        )
                                 }
                             }
                             .id(day)
@@ -1374,16 +1357,11 @@ struct MiniCalendarView: View {
             }
         }
         .padding(DN.spaceSM)
-        .background(DN.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(DN.border, lineWidth: 1)
-        )
+        .liquidGlass(cornerRadius: DN.radiusMD, intensity: 0.8)
     }
 
     private func dayColor(_ day: Int) -> Color {
-        if day == currentDay { return DN.black }
+        if day == currentDay { return DN.textDisplay }
         if day < currentDay { return DN.textDisabled }
         return DN.textPrimary
     }

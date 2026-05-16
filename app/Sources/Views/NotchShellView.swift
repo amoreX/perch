@@ -130,13 +130,14 @@ struct NotchShellView: View {
             // Tahoe-style base: liquid glass material
             shape.fill(.ultraThinMaterial)
 
-            // Dark tint for legibility — slightly less opaque when expanded so glass shows through
-            shape.fill(DN.black.opacity(expanded ? 0.55 : 0.92))
+            // Subtle dark tint — much lighter than before so glass blur is visible.
+            // Collapsed: fully opaque so the physical notch reads as solid black.
+            shape.fill(DN.black.opacity(expanded ? 0.32 : 0.95))
 
             // Top sheen
             shape.fill(
                 LinearGradient(
-                    colors: [Color.white.opacity(expanded ? 0.08 : 0.02), Color.white.opacity(0.0)],
+                    colors: [Color.white.opacity(expanded ? 0.10 : 0.02), Color.white.opacity(0.0)],
                     startPoint: .top, endPoint: .center
                 )
             )
@@ -144,7 +145,7 @@ struct NotchShellView: View {
             // Bottom rim shadow for depth
             shape.fill(
                 LinearGradient(
-                    colors: [Color.clear, Color.black.opacity(expanded ? 0.25 : 0.0)],
+                    colors: [Color.clear, Color.black.opacity(expanded ? 0.30 : 0.0)],
                     startPoint: .center, endPoint: .bottom
                 )
             )
@@ -227,108 +228,126 @@ struct NotchShellView: View {
     }
 
     // MARK: - Top Bar
+    //
+    // Layout grid: [LEFT TABS] [physical notch gap] [RIGHT TABS]
+    // Both side groups sit on the same baseline (vertically centered to notchH)
+    // and all controls are pill-shaped with a single height to share a baseline.
 
     private var expandedTopBar: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: DN.spaceMD) {
-                tabButton(
-                    label: "HOME",
-                    isActive: viewModel.viewState == .overview
-                ) {
+        HStack(alignment: .center, spacing: 0) {
+            // Left tab cluster
+            HStack(spacing: DN.spaceXS) {
+                pillTab(label: "Home", isActive: viewModel.viewState == .overview) {
                     withAnimation(DN.transition) {
                         viewModel.viewState = .overview
                     }
                 }
-
-                tabButton(
-                    label: "AGENTS",
-                    isActive: viewModel.isInTaskOrChat
-                ) {
+                pillTab(label: "Agents", isActive: viewModel.isInTaskOrChat) {
                     withAnimation(DN.transition) {
                         viewModel.viewState = .taskList
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.trailing, DN.spaceSM)
 
-            Color.clear.frame(width: notchW + DN.spaceMD)
+            // Physical notch reserved gap
+            Color.clear.frame(width: notchW)
 
-            HStack(spacing: DN.spaceSM) {
-                tabButton(
-                    label: "STATS",
-                    isActive: viewModel.viewState == .stats || viewModel.viewState == .processList
-                ) {
+            // Right cluster
+            HStack(spacing: DN.spaceXS) {
+                pillTab(label: "Stats", isActive: viewModel.viewState == .stats || viewModel.viewState == .processList) {
                     withAnimation(DN.transition) {
                         viewModel.viewState = .stats
                     }
                 }
 
-                // Bell icon
                 let notifsActive = viewModel.viewState == .notifications
-                Button(action: {
+                pillIcon(
+                    icon: notifsActive ? "bell.fill" : "bell",
+                    isActive: notifsActive,
+                    badge: viewModel.unreadCount > 0
+                ) {
                     withAnimation(DN.transition) {
                         viewModel.viewState = .notifications
                     }
-                }) {
-                    ZStack(alignment: .topTrailing) {
-                        Image(systemName: notifsActive ? "bell.fill" : "bell")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(notifsActive ? DN.textDisplay : DN.textDisabled)
-
-                        if viewModel.unreadCount > 0 {
-                            Circle()
-                                .fill(DN.accent)
-                                .frame(width: 6, height: 6)
-                                .offset(x: 2, y: -2)
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(notifsActive ? Color.white.opacity(0.12) : Color.clear)
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .stroke(notifsActive ? DN.glassStrokeHi : Color.clear, lineWidth: 0.6)
-                    )
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
 
                 let settingsActive = viewModel.viewState == .settings
-                Button(action: {
+                pillIcon(
+                    icon: settingsActive ? "gearshape.fill" : "gearshape",
+                    isActive: settingsActive
+                ) {
                     withAnimation(DN.transition) {
                         viewModel.viewState = .settings
                     }
-                }) {
-                    Image(systemName: settingsActive ? "gearshape.fill" : "gearshape")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(settingsActive ? DN.textDisplay : DN.textDisabled)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(settingsActive ? Color.white.opacity(0.12) : Color.clear)
-                        )
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(settingsActive ? DN.glassStrokeHi : Color.clear, lineWidth: 0.6)
-                        )
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
 
                 if viewModel.settings.showBattery {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 1, height: 14)
+                        .padding(.horizontal, 2)
                     BatteryView()
                 }
             }
-            .fixedSize(horizontal: true, vertical: false)
-            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.leading, DN.spaceSM)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(width: shapeWidth, height: notchH)
     }
 
+    // Unified pill: text + optional icon, single height baseline
+    private func pillTab(label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(DN.body(11, weight: isActive ? .semibold : .medium))
+                .foregroundColor(isActive ? DN.textDisplay : DN.textSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .frame(height: 22)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(isActive ? Color.white.opacity(0.14) : Color.clear)
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(isActive ? DN.glassStrokeHi : Color.clear, lineWidth: 0.6)
+                )
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func pillIcon(icon: String, isActive: Bool, badge: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(isActive ? DN.textDisplay : DN.textSecondary)
+
+                if badge {
+                    Circle()
+                        .fill(DN.accent)
+                        .frame(width: 5, height: 5)
+                        .offset(x: 3, y: -2)
+                }
+            }
+            .frame(width: 22, height: 22)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(isActive ? Color.white.opacity(0.14) : Color.clear)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(isActive ? DN.glassStrokeHi : Color.clear, lineWidth: 0.6)
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Legacy tabButton kept for compatibility with any remaining call sites
     private func tabButton(label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
@@ -358,34 +377,29 @@ struct BatteryView: View {
     @State private var isCharging: Bool = false
     @State private var timer: Timer?
 
+    private var batteryIcon: String {
+        if isCharging { return "battery.100.bolt" }
+        switch level {
+        case 90...:  return "battery.100"
+        case 70..<90: return "battery.75"
+        case 40..<70: return "battery.50"
+        case 15..<40: return "battery.25"
+        default:      return "battery.0"
+        }
+    }
+
     var body: some View {
-        HStack(spacing: DN.spaceXS) {
+        HStack(spacing: 4) {
+            Image(systemName: batteryIcon)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(batteryColor)
+                .symbolRenderingMode(.hierarchical)
+
             Text("\(level)%")
-                .font(DN.mono(9))
+                .font(DN.body(10, weight: .medium))
                 .foregroundColor(DN.textSecondary)
+                .monospacedDigit()
                 .fixedSize()
-
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2)
-                    .stroke(DN.borderVisible, lineWidth: 0.8)
-                    .frame(width: 18, height: 9)
-
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(batteryColor)
-                    .frame(width: max(CGFloat(level) / 100.0 * 15, 2), height: 6)
-                    .padding(.leading, 1.5)
-
-                RoundedRectangle(cornerRadius: 0.5)
-                    .fill(DN.borderVisible)
-                    .frame(width: 1.5, height: 4)
-                    .offset(x: 18.5)
-            }
-
-            if isCharging {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 7))
-                    .foregroundColor(DN.textPrimary)
-            }
         }
         .onAppear {
             updateBattery()
@@ -397,9 +411,9 @@ struct BatteryView: View {
     }
 
     private var batteryColor: Color {
-        if isCharging { return DN.textPrimary }
+        if isCharging { return DN.success }
         if level <= 20 { return DN.accent }
-        return DN.textSecondary
+        return DN.textPrimary
     }
 
     private func updateBattery() {
