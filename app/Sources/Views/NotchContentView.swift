@@ -333,29 +333,36 @@ struct NotchContentView: View {
         HStack(spacing: DN.spaceSM) {
             TextField("Ask anything", text: $chatInputText)
                 .textFieldStyle(.plain)
-                .controlSize(.large)
                 .focused($isChatInputFocused)
                 .onChange(of: isChatInputFocused) { _, focused in
                     viewModel.isChatInputActive = focused
                 }
                 .onSubmit { submitChat() }
 
-            if !chatInputText.isEmpty {
-                Button {
-                    submitChat()
-                } label: {
-                    Image(systemName: "arrow.up")
-                }
-                .buttonStyle(.glassProminent)
-                .controlSize(.small)
-                .tint(.accentColor)
-                .transition(.scale.combined(with: .opacity))
-            }
+            // Send button is ALWAYS present so the row height never changes.
+            // Disabled (inactive glass) until the user has typed something.
+            sendButton
         }
         .padding(.horizontal, DN.spaceMD)
         .padding(.vertical, DN.spaceSM)
         .glassEffect(.regular, in: .capsule)
-        .animation(DN.transition, value: chatInputText.isEmpty)
+    }
+
+    private var sendButton: some View {
+        let enabled = !chatInputText.trimmingCharacters(in: .whitespaces).isEmpty
+        return Image(systemName: "arrow.up")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 24, height: 24)
+            .glassEffect(
+                enabled ? Glass.regular.tint(DN.activeAccent) : Glass.regular,
+                in: .circle
+            )
+            .opacity(enabled ? 1.0 : 0.45)
+            .contentShape(.circle)
+            .onTapGesture {
+                if enabled { submitChat() }
+            }
     }
 
     private func submitChat() {

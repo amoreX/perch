@@ -237,37 +237,46 @@ struct NotchShellView: View {
         .frame(width: shapeWidth, height: notchH)
     }
 
-    /// A pill-shaped text button. Active uses a deep navy tint so the glass
-    /// stays dark and the white label has clean contrast — never a light tint
-    /// (which makes Apple's button style invert the foreground to black).
+    /// A pill-shaped text button. Active uses a deep navy tint; the label
+    /// stays white in every state. We fire the action on tap-release (not
+    /// press) so there's no pressed-state color flash — only the post-click
+    /// active state is visible.
     private func topBarTab(_ label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
-        Button(label, action: action)
-            .buttonStyle(.glass)
-            .controlSize(.small)
-            .tint(isActive ? DN.activeAccent : .clear)
+        Text(label)
+            .font(.system(size: 12, weight: .medium))
             .foregroundStyle(.white)
-            .clipShape(.capsule)
+            .padding(.horizontal, 12)
+            .frame(height: 22)
+            .glassEffect(
+                isActive ? Glass.regular.tint(DN.activeAccent) : Glass.regular,
+                in: .capsule
+            )
+            .contentShape(.capsule)
+            .onTapGesture(perform: action)
     }
 
-    /// A pill-shaped icon button. Same active-state rules as topBarTab.
+    /// A pill-shaped icon button. Same rules as topBarTab — release-fire,
+    /// no press flash, white glyph in every state.
     private func topBarIcon(_ icon: String, isActive: Bool, badge: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .symbolRenderingMode(.hierarchical)
-        }
-        .buttonStyle(.glass)
-        .controlSize(.small)
-        .tint(isActive ? DN.activeAccent : .clear)
-        .foregroundStyle(.white)
-        .clipShape(.capsule)
-        .overlay(alignment: .topTrailing) {
-            if badge {
-                Circle()
-                    .fill(.red)
-                    .frame(width: 5, height: 5)
-                    .offset(x: -2, y: 2)
+        Image(systemName: icon)
+            .symbolRenderingMode(.hierarchical)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(width: 26, height: 22)
+            .glassEffect(
+                isActive ? Glass.regular.tint(DN.activeAccent) : Glass.regular,
+                in: .capsule
+            )
+            .contentShape(.capsule)
+            .onTapGesture(perform: action)
+            .overlay(alignment: .topTrailing) {
+                if badge {
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 5, height: 5)
+                        .offset(x: -2, y: 2)
+                }
             }
-        }
     }
 
 }
@@ -583,6 +592,10 @@ struct SettingsPanel: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .scrollIndicators(.never)
+        .padding(.horizontal, -8) // counteract the form's default inset so
+                                  // section edges align with the top bar's
+                                  // sideInset (DN.spaceMD = 12pt).
         .onAppear { viewModel.loadProviderConfigs() }
     }
 
@@ -703,10 +716,8 @@ struct ProviderRow: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 10) {
-                    fieldLabel("API key")
-                    SecureField("sk-…", text: $apiKey)
+                    SecureField("API key", text: $apiKey)
                         .textFieldStyle(.plain)
-                        .font(.system(.body, design: .monospaced))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(
@@ -714,16 +725,16 @@ struct ProviderRow: View {
                                 .fill(Color.white.opacity(0.06))
                         )
 
-                    fieldLabel("Model")
-                    TextField(defaultModel, text: $modelId)
-                        .textFieldStyle(.plain)
-                        .font(.system(.body, design: .monospaced))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color.white.opacity(0.06))
-                        )
+                    Picker("Model", selection: Binding(
+                        get: { modelId.isEmpty ? defaultModel : modelId },
+                        set: { modelId = $0 }
+                    )) {
+                        ForEach(ProviderConfig.availableModels[providerType] ?? [defaultModel], id: \.self) { m in
+                            Text(m).tag(m)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
 
                     HStack(spacing: 8) {
                         Button(isVerifying ? "Verifying…" : (isVerified && apiKey.isEmpty ? "Verified" : "Verify")) {
@@ -777,12 +788,6 @@ struct ProviderRow: View {
                 }
             }
         }
-    }
-
-    private func fieldLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
     }
 }
 

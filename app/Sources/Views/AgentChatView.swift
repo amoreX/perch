@@ -79,16 +79,22 @@ struct AgentChatView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Button {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Back")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .frame(height: 22)
+            .glassEffect(.regular, in: .capsule)
+            .contentShape(.capsule)
+            .onTapGesture {
                 withAnimation(DN.transition) {
                     viewModel.viewState = .taskList
                 }
-            } label: {
-                Label("Back", systemImage: "chevron.left")
             }
-            .buttonStyle(.glass)
-            .controlSize(.small)
-            .tint(.clear)
 
             if let task = task {
                 Circle()
@@ -184,20 +190,18 @@ struct AgentChatView: View {
         switch msg.role {
         case "user":
             HStack {
-                Spacer()
+                Spacer(minLength: 40)
                 Text(msg.content)
-                    .font(DN.body(11, weight: .medium))
-                    .foregroundColor(DN.textPrimary)
-                    .padding(.horizontal, DN.spaceSM + DN.spaceXS)
-                    .padding(.vertical, DN.spaceXS + 1)
-                    .background(DN.surfaceRaised)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(DN.borderVisible, lineWidth: 1)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
                     )
             }
-            .padding(.vertical, DN.space2xs)
+            .padding(.vertical, 2)
 
         case "agent":
             MarkdownView(text: msg.content, isFinal: true)
@@ -304,32 +308,24 @@ struct AgentChatView: View {
             // Action buttons or status
             switch status {
             case .pending:
-                HStack(spacing: DN.spaceSM) {
-                    Button(action: { viewModel.approveConnectionRequest(requestId) }) {
-                        Text("CONNECT")
-                            .font(DN.label(8))
-                            .tracking(0.6)
-                            .foregroundColor(DN.black)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(DN.success)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                    }
-                    .buttonStyle(.plain)
+                HStack(spacing: 8) {
+                    Text("Connect")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 24)
+                        .glassEffect(Glass.regular.tint(DN.activeAccent), in: .capsule)
+                        .contentShape(.capsule)
+                        .onTapGesture { viewModel.approveConnectionRequest(requestId) }
 
-                    Button(action: { viewModel.denyConnectionRequest(requestId) }) {
-                        Text("DENY")
-                            .font(DN.label(8))
-                            .tracking(0.6)
-                            .foregroundColor(DN.textSecondary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(DN.border, lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(.plain)
+                    Text("Deny")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 24)
+                        .glassEffect(.regular, in: .capsule)
+                        .contentShape(.capsule)
+                        .onTapGesture { viewModel.denyConnectionRequest(requestId) }
                 }
 
             case .connecting:
@@ -363,13 +359,11 @@ struct AgentChatView: View {
                 }
             }
         }
-        .padding(DN.spaceSM)
-        .background(DN.surface)
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(status == .pending ? DN.warning.opacity(0.4) : DN.border, lineWidth: 1)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.05))
         )
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .padding(.vertical, DN.spaceXS)
     }
 
@@ -389,43 +383,32 @@ struct AgentChatView: View {
 
     private var inputBar: some View {
         HStack(spacing: DN.spaceSM) {
-            Image(systemName: "sparkle")
-                .font(.system(size: 9, weight: .medium))
-                .foregroundColor(DN.textDisabled)
+            TextField("Message agent", text: $messageText)
+                .textFieldStyle(.plain)
+                .onSubmit { sendMessage() }
 
-            TextField("", text: $messageText, prompt: Text("Message agent...")
-                .font(DN.body(11))
-                .foregroundColor(DN.textDisabled)
-            )
-            .textFieldStyle(.plain)
-            .font(DN.body(11))
-            .foregroundColor(DN.textPrimary)
-            .onSubmit { sendMessage() }
-
-            if !messageText.isEmpty {
-                Button(action: { sendMessage() }) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(DN.black)
-                        .frame(width: 18, height: 18)
-                        .background(DN.textDisplay)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .transition(.scale.combined(with: .opacity))
-            }
+            sendButton
         }
-        .padding(.horizontal, DN.spaceSM + DN.spaceXS)
-        .padding(.vertical, DN.spaceXS + 2)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(DN.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(DN.border, lineWidth: 1)
-        )
-        .animation(.easeOut(duration: DN.microDuration), value: messageText.isEmpty)
+        .padding(.horizontal, DN.spaceMD)
+        .padding(.vertical, DN.spaceSM)
+        .glassEffect(.regular, in: .capsule)
+    }
+
+    private var sendButton: some View {
+        let enabled = !messageText.trimmingCharacters(in: .whitespaces).isEmpty
+        return Image(systemName: "arrow.up")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 24, height: 24)
+            .glassEffect(
+                enabled ? Glass.regular.tint(DN.activeAccent) : Glass.regular,
+                in: .circle
+            )
+            .opacity(enabled ? 1.0 : 0.45)
+            .contentShape(.circle)
+            .onTapGesture {
+                if enabled { sendMessage() }
+            }
     }
 
     private func sendMessage() {
