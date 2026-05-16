@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import IOKit.ps
 
 struct NotchShellView: View {
     @ObservedObject var viewModel: NotchViewModel
@@ -315,65 +314,6 @@ struct NotchShellView: View {
 
 }
 
-// MARK: - Battery
-
-struct BatteryView: View {
-    @State private var level: Int = 0
-    @State private var isCharging: Bool = false
-    @State private var timer: Timer?
-
-    private var batteryIcon: String {
-        if isCharging { return "battery.100.bolt" }
-        switch level {
-        case 90...:  return "battery.100"
-        case 70..<90: return "battery.75"
-        case 40..<70: return "battery.50"
-        case 15..<40: return "battery.25"
-        default:      return "battery.0"
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: batteryIcon)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(batteryColor)
-                .symbolRenderingMode(.hierarchical)
-
-            Text("\(level)%")
-                .font(DN.body(10, weight: .medium))
-                .foregroundColor(DN.textSecondary)
-                .monospacedDigit()
-                .fixedSize()
-        }
-        .onAppear {
-            updateBattery()
-            timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
-                DispatchQueue.main.async { updateBattery() }
-            }
-        }
-        .onDisappear { timer?.invalidate() }
-    }
-
-    private var batteryColor: Color {
-        if isCharging { return DN.success }
-        if level <= 20 { return DN.accent }
-        return DN.textPrimary
-    }
-
-    private func updateBattery() {
-        let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
-        let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as [CFTypeRef]
-        for source in sources {
-            guard let desc = IOPSGetPowerSourceDescription(snapshot, source).takeUnretainedValue() as? [String: Any] else { continue }
-            if let capacity = desc[kIOPSCurrentCapacityKey] as? Int { level = capacity }
-            if let charging = desc[kIOPSIsChargingKey] as? Bool { isCharging = charging }
-        }
-    }
-}
-
-// MARK: - Settings
-
 // MARK: - Notifications Panel
 
 struct NotificationsPanel: View {
@@ -618,6 +558,26 @@ struct SettingsPanel: View {
     @ObservedObject var viewModel: NotchViewModel
 
     var body: some View {
+        ZStack {
+            // Progressive blur backdrop — a gradient that extends and blurs
+            // behind the form controls per .backgroundExtensionEffect().
+            LinearGradient(
+                colors: [
+                    Color(red: 0.10, green: 0.10, blue: 0.14),
+                    Color(red: 0.05, green: 0.05, blue: 0.08),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .backgroundExtensionEffect()
+            .ignoresSafeArea()
+
+            form
+        }
+    }
+
+    private var form: some View {
         Form {
             Section("Chat") {
                 Toggle("Open chat on send", isOn: $viewModel.settings.openChatOnSend)
