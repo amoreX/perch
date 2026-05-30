@@ -15,15 +15,15 @@ enum DN {
     static let textPrimary     = Color(hex: 0xE8E8E8)
     static let textDisplay     = Color.white
 
-    static let accent          = Color(hex: 0xD71921)  // Signal red — one per screen
-    static let accentSubtle    = Color(hex: 0xD71921).opacity(0.15)
+    static let accent          = Color(hex: 0x8B7CF6)  // Soft purple
+    static let accentSubtle    = Color(hex: 0x8B7CF6).opacity(0.15)
     static let success         = Color(hex: 0x4A9E5C)
     static let warning         = Color(hex: 0xD4A843)
 
-    // Dark navy used as the tint for active glass buttons. Deliberately
-    // dim so SwiftUI's glass style does NOT auto-invert the foreground to
+    // Dim purple tint for active glass buttons. Deliberately dim so
+    // SwiftUI's glass style does NOT auto-invert the foreground to
     // black; the white label stays white against this surface.
-    static let activeAccent    = Color(hex: 0x1A3566)
+    static let activeAccent    = Color(hex: 0x3D3270)
 
     // Agent brand colors
     static let claudeOrange    = Color(hex: 0xD97757)

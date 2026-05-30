@@ -14,7 +14,7 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 export async function getProviderForUser(userId: string): Promise<LLMProvider> {
   try {
     const { data, error } = await supabase
-      .from('provider_configs')
+      .from('danotch_provider_configs')
       .select('provider, api_key_encrypted, model_id')
       .eq('user_id', userId)
       .eq('is_active', true)

@@ -231,7 +231,7 @@ class AuthManager: ObservableObject {
             }
             return data
         } catch {
-            await MainActor.run { self.error = "Cannot reach server" }
+            await MainActor.run { self.error = "Cannot reach server — is the backend running?" }
             return nil
         }
     }

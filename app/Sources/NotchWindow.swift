@@ -193,10 +193,13 @@ class NotchWindowController: NSObject {
         }
     }
 
+    private var shortcutCollapsedAt: Date = .distantPast
+
     private func handleGlobalShortcut() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             if self.viewModel.isExpanded {
+                self.shortcutCollapsedAt = Date()
                 self.collapse()
             } else {
                 // Drop down on whichever monitor currently has the cursor in
@@ -303,7 +306,7 @@ class NotchWindowController: NSObject {
             }
             collapseTimer?.invalidate()
             collapseTimer = nil
-            if !viewModel.isExpanded {
+            if !viewModel.isExpanded && Date().timeIntervalSince(shortcutCollapsedAt) > 0.6 {
                 expand()
             }
         } else if viewModel.isExpanded {

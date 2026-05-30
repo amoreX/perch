@@ -12,7 +12,7 @@ export function createScheduledRoutes(): Router {
     console.log(`[scheduled] GET / userId=${userId}`);
 
     const { data, error } = await supabase
-      .from('scheduled_tasks')
+      .from('danotch_scheduled_tasks')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
@@ -42,7 +42,7 @@ export function createScheduledRoutes(): Router {
     // If re-enabling or changing schedule, recompute next_run_at
     if (updates.enabled === true || updates.cron || updates.interval_ms) {
       const { data: existing } = await supabase
-        .from('scheduled_tasks')
+        .from('danotch_scheduled_tasks')
         .select('task_type, cron, interval_ms')
         .eq('id', taskId)
         .eq('user_id', userId)
@@ -58,7 +58,7 @@ export function createScheduledRoutes(): Router {
     updates.updated_at = new Date().toISOString();
 
     const { error } = await supabase
-      .from('scheduled_tasks')
+      .from('danotch_scheduled_tasks')
       .update(updates)
       .eq('id', taskId)
       .eq('user_id', userId);
@@ -77,7 +77,7 @@ export function createScheduledRoutes(): Router {
     console.log(`[scheduled] DELETE /${taskId} userId=${userId}`);
 
     const { error } = await supabase
-      .from('scheduled_tasks')
+      .from('danotch_scheduled_tasks')
       .delete()
       .eq('id', taskId)
       .eq('user_id', userId);
@@ -97,7 +97,7 @@ export function createScheduledRoutes(): Router {
 
     // Just reset next_run_at to now — the scheduler will pick it up
     const { error } = await supabase
-      .from('scheduled_tasks')
+      .from('danotch_scheduled_tasks')
       .update({ next_run_at: new Date().toISOString() })
       .eq('id', taskId)
       .eq('user_id', userId);

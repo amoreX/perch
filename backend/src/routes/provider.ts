@@ -24,7 +24,7 @@ export function createProviderRoutes(): Router {
     console.log(`[provider] GET / userId=${userId}`);
 
     const { data, error } = await supabase
-      .from('provider_configs')
+      .from('danotch_provider_configs')
       .select('id, provider, model_id, is_active, verified_at, created_at, updated_at')
       .eq('user_id', userId)
       .order('is_active', { ascending: false });
@@ -56,13 +56,13 @@ export function createProviderRoutes(): Router {
 
     // Deactivate all other providers for this user
     await supabase
-      .from('provider_configs')
+      .from('danotch_provider_configs')
       .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq('user_id', userId);
 
     // Upsert this provider config
     const { data, error } = await supabase
-      .from('provider_configs')
+      .from('danotch_provider_configs')
       .upsert(
         {
           user_id: userId,
@@ -116,7 +116,7 @@ export function createProviderRoutes(): Router {
       // Update verified_at if user already has this provider saved
       const userId = req.user!.sub;
       await supabase
-        .from('provider_configs')
+        .from('danotch_provider_configs')
         .update({ verified_at: new Date().toISOString() })
         .eq('user_id', userId)
         .eq('provider', provider);
@@ -136,7 +136,7 @@ export function createProviderRoutes(): Router {
     const { provider } = req.body;
 
     const query = supabase
-      .from('provider_configs')
+      .from('danotch_provider_configs')
       .delete()
       .eq('user_id', userId);
 

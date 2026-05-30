@@ -107,7 +107,7 @@ export async function disconnect(userId: string, toolkitSlug: string, appType: s
     }
 
     await supabase
-      .from('connected_apps')
+      .from('danotch_connected_apps')
       .update({
         active: false,
         composio_conn_id: null,
@@ -134,7 +134,7 @@ export async function syncConnectionToDb(userId: string, appType: string, toolki
     const status = await getConnectionStatus(userId, toolkitSlug);
     if (status.connected) {
       await supabase
-        .from('connected_apps')
+        .from('danotch_connected_apps')
         .update({
           active: true,
           composio_conn_id: status.accountId ?? null,
@@ -167,7 +167,7 @@ export async function getActiveApps(userId: string): Promise<string[]> {
   }
 
   const { data, error } = await supabase
-    .from('connected_apps')
+    .from('danotch_connected_apps')
     .select('app_type')
     .eq('user_id', userId)
     .eq('active', true);

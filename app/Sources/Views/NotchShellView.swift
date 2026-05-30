@@ -801,6 +801,7 @@ struct SettingsPanel: View {
         }
         .toggleStyle(.switch)
         .controlSize(.small)
+        .tint(DN.accent)
     }
 
     // MARK: - Default provider row
@@ -848,6 +849,7 @@ struct SettingsPanel: View {
         }
         .toggleStyle(.switch)
         .controlSize(.small)
+        .tint(DN.accent)
         .disabled(!isPinned && atMax)
     }
 }

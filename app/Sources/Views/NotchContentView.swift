@@ -56,7 +56,7 @@ private struct TodayPage: View {
 
     private var composer: some View {
         HStack(spacing: 10) {
-            TextField("Ask Danotch anything…", text: $composerText)
+            TextField("Ask Perch anything…", text: $composerText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .foregroundStyle(.white)

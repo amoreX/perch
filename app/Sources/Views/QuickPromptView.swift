@@ -7,7 +7,7 @@ struct QuickPromptView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            TextField("Ask Danotch anything…", text: $text)
+            TextField("Ask Perch anything…", text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .foregroundStyle(.white)

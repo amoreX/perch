@@ -60,7 +60,7 @@ export function createAuthRoutes(): Router {
     console.log(`[auth] Signup complete, session issued for ${email}`);
 
     // Create user_profiles row
-    const { error: profileError } = await supabase.from('user_profiles').insert({
+    const { error: profileError } = await supabase.from('danotch_user_profiles').insert({
       id: userId,
       email,
       full_name: full_name || usernameFromEmail(email),
@@ -76,7 +76,7 @@ export function createAuthRoutes(): Router {
       app_type: app,
       active: false,
     }));
-    const { error: appsError } = await supabase.from('connected_apps').insert(appRows);
+    const { error: appsError } = await supabase.from('danotch_connected_apps').insert(appRows);
 
     if (appsError) {
       console.error('[auth] Failed to create connected_apps:', appsError.message);
@@ -118,7 +118,7 @@ export function createAuthRoutes(): Router {
 
     // Fetch profile
     const { data: profile } = await supabase
-      .from('user_profiles')
+      .from('danotch_user_profiles')
       .select('full_name, avatar_url, plan')
       .eq('id', data.user.id)
       .single();
@@ -182,7 +182,7 @@ export function createAuthRoutes(): Router {
       }) as { sub: string };
 
       const { data: profile, error } = await supabase
-        .from('user_profiles')
+        .from('danotch_user_profiles')
         .select('*')
         .eq('id', payload.sub)
         .single();

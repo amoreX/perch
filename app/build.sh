@@ -17,8 +17,10 @@ fi
 # Create app bundle for proper macOS integration
 BUNDLE_DIR="Danotch.app/Contents"
 mkdir -p "$BUNDLE_DIR/MacOS"
+mkdir -p "$BUNDLE_DIR/Resources"
 
 cp "$BINARY" "$BUNDLE_DIR/MacOS/Danotch"
+cp "$SCRIPT_DIR/Resources/AppIcon.icns" "$BUNDLE_DIR/Resources/AppIcon.icns"
 
 cat > "$BUNDLE_DIR/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -26,9 +28,9 @@ cat > "$BUNDLE_DIR/Info.plist" << 'PLIST'
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.danotch.app</string>
+    <string>com.perch.app</string>
     <key>CFBundleName</key>
-    <string>Danotch</string>
+    <string>Perch</string>
     <key>CFBundleExecutable</key>
     <string>Danotch</string>
     <key>CFBundleVersion</key>
@@ -37,6 +39,8 @@ cat > "$BUNDLE_DIR/Info.plist" << 'PLIST'
     <string>1.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>
