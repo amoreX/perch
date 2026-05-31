@@ -23,7 +23,7 @@ function FooterShoulder() {
       viewBox={`0 0 ${size} ${size}`}
       style={{
         right: -size,
-        bottom: 0,
+        bottom: -1,
         width: size,
         height: size,
         display: 'block',
