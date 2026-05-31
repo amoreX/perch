@@ -145,7 +145,20 @@ export default function Hero() {
           inset: 0,
           width: '100%',
           height: '100%',
-          filter: 'saturate(0) brightness(0.65)',
+          filter: 'saturate(0) brightness(1) contrast(0.9)',
+        }}
+      />
+
+      {/* Purple tint overlay */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(107, 88, 228, 0.7)',
+          mixBlendMode: 'overlay',
+          
+          pointerEvents: 'none',
         }}
       />
 
