@@ -14,53 +14,76 @@ function AppleIcon() {
   );
 }
 
+const NOTCH = '#111111';
+
+// Aligns content with max-w-[1280px] mx-auto px-8 container at any viewport width.
+// On narrow viewports the container is full-width so offset = 0 + 32px.
+// On wide viewports it's (vw - 1280px) / 2 + 32px.
+const CONTAINER_ALIGN = 'calc(max(0px, (100vw - 1280px) / 2) + 32px)';
+
 export default function Navbar() {
   return (
-    <header
-      className="fixed flex  w-full top-0 left-0 right-0 z-50"
-      // style={{ background: '#111111' }}
-    >
-      <div className='bg-[#111111] z-0 absolute h-[10px] w-full'  ></div>
-      <div className='bg-[#111111] z-0 absolute h-full w-[220px] rounded-br-[26px]' ></div>
-      <div className='bg-[#111111] z-0 absolute h-full w-[268px] right-0 rounded-bl-[26px]' ></div>
-      <div className='bg-[#111111] left-1/2 -translate-x-[59%]  z-0 absolute h-full w-[280px] rounded-b-[26px]' ></div>
-      <div className="max-w-[1280px] w-full z-20 mx-auto px-8">
-        <nav className="flex items-center h-14">
-          {/* Steps Mono wordmark */}
+    <header className="fixed top-0 left-0 right-0 z-50 pointer-events-none">
+      {/* Full-width connecting bar */}
+      <div className="absolute top-0 left-0 right-0 h-[10px] bg-[#111111] pointer-events-auto" />
+
+      {/* Left notch — bleeds to screen left edge, only bottom-right rounded */}
+      <div
+        className="absolute top-0 left-0 flex items-center h-14 pointer-events-auto"
+        style={{
+          background: NOTCH,
+          borderRadius: '0 0 28px 0',
+          paddingLeft: CONTAINER_ALIGN,
+          paddingRight: '16px',
+        }}
+      >
+        <a
+          href="/"
+          className="no-underline"
+          style={{
+            fontFamily: "'Steps Mono', monospace",
+            fontSize: 18,
+            fontWeight: 400,
+            color: '#ffffff',
+            letterSpacing: '0.02em',
+            lineHeight: 1,
+          }}
+        >
+          Perch
+        </a>
+      </div>
+
+      {/* Center notch — equal 8px pad (matches h-10 buttons' 8px vertical breathing room) */}
+      <div
+        className="absolute left-1/2 -translate-x-1/2 top-0 flex items-center h-14 px-2 gap-0.5 pointer-events-auto"
+        style={{ background: NOTCH, borderRadius: '0 0 28px 28px' }}
+      >
+        {NAV_LINKS.map((link) => (
           <a
-            href="/"
-            className="no-underline flex-shrink-0"
-            style={{
-              fontFamily: "'Steps Mono', monospace",
-              fontSize: 18,
-              fontWeight: 400,
-              color: '#ffffff',
-              letterSpacing: '0.02em',
-              lineHeight: 1,
-            }}
+            key={link.label}
+            href={link.href}
+            className="h-10 px-3.5 flex items-center rounded-full text-sm no-underline text-white/45 hover:text-white/85 hover:bg-white/10"
+            style={{ letterSpacing: '-0.02em', fontFamily: "'Geist Mono', monospace" }}
           >
-            Perch
+            {link.label}
           </a>
+        ))}
+      </div>
 
-          {/* Center nav links */}
-          <div className="flex-1 flex justify-center items-center gap-0.5">
-            {NAV_LINKS.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                className="h-10 px-3.5 flex items-center rounded-full text-sm no-underline text-white/45 hover:text-white/85"
-                style={{ letterSpacing: '-0.02em', fontFamily: "'Geist Mono', monospace" }}
-              >
-                {link.label}
-              </a>
-            ))}
-          </div>
-
-          <Button href="#download" size="sm">
-            <AppleIcon />
-            Download
-          </Button>
-        </nav>
+      {/* Right notch — bleeds to screen right edge, only bottom-left rounded */}
+      <div
+        className="absolute top-0 right-0 flex items-center h-14 pointer-events-auto"
+        style={{
+          background: NOTCH,
+          borderRadius: '0 0 0 28px',
+          paddingRight: CONTAINER_ALIGN,
+          paddingLeft: '12px',
+        }}
+      >
+        <Button href="#download" size="sm">
+          <AppleIcon />
+          Download
+        </Button>
       </div>
     </header>
   );

@@ -21,8 +21,9 @@ It started as a way to watch delegated AI agent tasks run without switching wind
 - **Name:** Perch
 - **Old name (internal/codebase):** Danotch — do not use in any user-facing copy
 - **Aesthetic:** Dark, Nothing-inspired. OLED-black. Monospaced type. Minimal. No decoration that doesn't carry meaning.
-- **Accent color (site):** `#E53935` — red, used sparingly for CTAs and highlights
-- **App accent:** User-configurable; defaults to white; presets include orange, cyan, red, green, yellow, purple, teal
+- **Accent color:** `#8B7CF6` — soft muted purple. This is the real app accent, drive the site from this.
+- **Active accent (glass tint):** `#3D3270` — dim purple used on active glass buttons
+- **Note:** The old site used `#E53935` red — that was the pre-rebrand design, do not use it.
 - **Tone:** Technical but not jargon-heavy. Direct. Confident. Low hype. No exclamation points. Writes like a developer who built something they actually use.
 
 ---
@@ -164,9 +165,11 @@ All tokens in `Theme.swift` under `enum DN`:
 | `textSecondary` | `#999999` | Secondary labels |
 | `textPrimary` | `#E8E8E8` | Body text |
 | `textDisplay` | `#FFFFFF` | Headlines |
-| `accent` | `#D71921` | Signal red, CTAs |
+| `accent` | `#8B7CF6` | Soft purple, CTAs, active states |
+| `activeAccent` | `#3D3270` | Dim purple, glass button tint |
 | `success` | `#4A9E5C` | Completed, responding |
 | `warning` | `#D4A843` | Running, thinking |
+| `claudeOrange` | `#D97757` | Claude agent brand color |
 
 **Typography:** Monospaced light for display, monospaced ALL CAPS with tracking for labels, system default for body.
 
@@ -181,7 +184,7 @@ All tokens in `Theme.swift` under `enum DN`:
 The current landing page (`V7Split.tsx`) mirrors the app design system in CSS:
 
 - **Layout:** Fixed black left panel (~45vw, max 580px) + scrollable white right panel
-- **Accent:** `#E53935` (red)
+- **Accent:** `#E53935` (red) — OLD, pre-rebrand. The real accent is `#8B7CF6` purple.
 - **Typeface:** System sans for body; font-mono for the wordmark `DANOTCH`
 - **Left panel behaviors:**
   - Initial: full headline + CTA buttons
