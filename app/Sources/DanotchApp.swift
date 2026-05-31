@@ -22,6 +22,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        applyAppIcon()
 
         wsServer = WebSocketServer(viewModel: viewModel)
         wsServer?.start()
@@ -36,6 +37,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // First launch, logged out, or setup still pending — show onboarding
             showOnboarding()
         }
+    }
+
+    private func applyAppIcon() {
+        let fm = FileManager.default
+        var candidates: [URL] = []
+        if let bundled = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") {
+            candidates.append(bundled)
+        }
+        // Dev (`swift run`): resolve relative to this source file → app/Resources/AppIcon.icns
+        let sourceDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        candidates.append(sourceDir.appendingPathComponent("Resources/AppIcon.icns"))
+        candidates.append(URL(fileURLWithPath: fm.currentDirectoryPath).appendingPathComponent("Resources/AppIcon.icns"))
+
+        guard let url = candidates.first(where: { fm.fileExists(atPath: $0.path) }),
+              let image = NSImage(contentsOf: url) else { return }
+        NSApp.applicationIconImage = image
     }
 
     private var expandOnFirstLaunch = false
@@ -69,6 +86,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func showOnboarding() {
         // Temporarily show in dock so the window gets focus
         NSApp.setActivationPolicy(.regular)
+        applyAppIcon()
 
         let onboardingSize = NSSize(width: 360, height: 360)
         let window = NSWindow(

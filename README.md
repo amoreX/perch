@@ -1,70 +1,109 @@
-# Danotch
+# Perch
 
-macOS notch status viewer for delegated agent tasks. Lives in the MacBook notch, expands on hover to show time/weather/date and real-time subagent task progress.
+Perch lives in your MacBook notch. Hover near it and it drops down into a little assistant — your time and date, what's playing, system stats, the AI sessions running in your terminal, and a chat box that can actually do things on your machine.
 
-## Structure
+It started as a status viewer for delegated agent tasks. It's now closer to a place where everything ambient about your machine perches above the keyboard, one hover away, instead of buried in a tab you forgot to switch to.
+
+## what's in here
 
 ```
-app/       — macOS Swift app (notch overlay)
-backend/   — Node.js Express backend
+app/       — the macOS app, Swift + SwiftUI (the notch overlay)
+backend/   — Node + Express, Supabase, multi-provider LLM, Composio integrations
+site/      — the landing page, React + Vite + Tailwind
 ```
 
-## Quick Start
+Three separate things. The app talks to the backend over HTTP, the backend talks back over a WebSocket. The site is just marketing.
 
-### App (macOS notch overlay)
+## running it
+
+### the app
 
 ```bash
 cd app
-swift run Danotch
+swift run Perch
 ```
 
-Hover over the notch area to expand. Mock data loads automatically for development.
+macOS 26+, Swift 6.2 toolchain. First launch shows onboarding — sign up, pick a model (Perch's default or your own key), optionally connect some apps, grant whatever local access you're comfortable with. After that it disappears into the notch. Hover to bring it back.
 
-### Backend
+For a real `.app` bundle:
+
+```bash
+cd app
+./build.sh        # builds release + bundles Perch.app (ad-hoc signed)
+open Perch.app
+```
+
+It runs as an accessory — no dock icon, no menu bar clutter. Just the notch.
+
+### the backend
 
 ```bash
 cd backend
 npm install
+npm run dev       # :3001
+```
+
+Needs a `.env` with Supabase credentials and at least one LLM key (`ANTHROPIC_API_KEY` for the fallback). `COMPOSIO_API_KEY` if you want app integrations, `PROVIDER_KEY_SECRET` to encrypt stored BYOK keys. All of it is env-overridable in `config.ts`.
+
+### the site
+
+```bash
+cd site
+npm install
 npm run dev
 ```
 
-### Build Release
+No tests in any of the three. This is a project, not a product team.
 
-```bash
-cd app
-./build.sh
-open Danotch.app
-```
+## what it actually does
 
-## How It Works
+**watches your agents.** If you've got Claude Code running in a terminal, Perch sees it. Project name, the last thing you asked it, what tool it's reaching for right now — reading a file, running a command, searching, thinking. It reads the session JSONL to figure out live state, so the indicator on the row tells you whether it's working or waiting on you. Click a session and it brings that terminal to the front.
 
-### Notch Interaction
+**is a chat box that does things.** Type into the notch and it hits the backend, which runs a real tool-use loop. It can run shell commands on your Mac, search the web, fetch a page. If you've connected Gmail, Calendar, Docs, or GitHub through Composio, it can use those too — and when it needs access it doesn't have, it asks, right there in the chat, with a connect/deny button.
 
-- **Compact mode**: Time (left of notch) and task count (right of notch) shown as wings
-- **Hover**: Black pill expands down from notch with four tabs: Home, Agents, Stats, Settings
-- **Home**: Time, date, calendar, and active task summary
-- **Agents**: Task list with status indicators; click a task for detailed chat view
-- **Stats**: Live system monitoring — CPU usage, RAM, and network speed with sparkline graphs
-- **Settings**: App configuration
-- **Mouse leaves**: 400ms grace period, then collapses back to compact
-- **Swipe left**: On task list, swipe gesture (60px threshold) navigates back to overview
+**runs things on a schedule.** Ask it to check something every morning, or poll for a condition and only ping you when it's true. Scheduled tasks live on the backend, tick every 30 seconds, and either save their output quietly or push a notification. The conditional ones ("tell me when X drops below Y") only fire when they mean it.
 
-### WebSocket Protocol
+**peeks at you.** When a scheduled task has something worth saying, the notch grows a little and shows the headline without taking over your screen. Hover for the rest, ignore it and it goes away on its own.
 
-The app runs a WebSocket server on `ws://localhost:7778/ws` (with `/health` endpoint). Accepts JSON messages:
+**shows you your machine.** CPU and RAM on arc gauges, network up/down as little oscilloscope graphs, disk, uptime, process count. There's a sortable process table if you want to go kill something. And you can pin a few of these — plus a calendar strip and an Apple Music widget — to the home view so they're always there.
+
+**brings your own key.** Use the model the server's configured with, or drop in your own Anthropic, OpenAI, or OpenRouter key. Keys are encrypted at rest. Pick whatever model you want.
+
+## the notch itself
+
+- **collapsed** — just two wings around the notch: time on the left, a count on the right
+- **hover** — the black pill drops down. tabs across the top: `HOME · AGENTS · STATS · 🔔 · ⚙`
+- **home** — greeting, time, date, your pinned widgets, the chat bar
+- **agents** — your Claude Code sessions and recent tasks, plus thread history
+- **stats** — the bento grid of system metrics
+- **notifications** — grouped by the task that produced them
+- **settings** — chat behavior, display, agents, providers, app connections
+- **⌘⇧Space** — drops the notch down anywhere and focuses the chat input
+- **mouse leaves** — 400ms grace, then it collapses (it won't collapse on you mid-chat)
+- **escape** — collapse now
+
+## how the app and backend talk
+
+The app runs a WebSocket server on `ws://localhost:7778/ws` (plus a `/health` endpoint). The backend connects to it as a client and pushes events as things happen.
 
 ```json
-{"type": "subagent_event", "session_id": "abc-123", "event_type": "status|progress|done", "data": {...}}
+{ "type": "subagent_event", "session_id": "abc-123", "event_type": "status|progress|done", "data": { } }
 ```
 
-| event_type | Purpose | data fields |
-|-----------|---------|-------------|
-| `status` | Add/update task | `task`, `description`, `status`, `tool_calls_count` |
-| `progress` | Tool calls, tokens | `type` (tool_start/tool_result/token/thinking_complete), `tool_name`, `text` |
-| `done` | Task finished | `status`, `result`, `error` |
+| event_type | what it means | fields |
+|------------|---------------|--------|
+| `status`   | add or update a task | `task`, `description`, `status`, `tool_calls_count`, `title` |
+| `progress` | tool lifecycle, tokens | `type` (`tool_start`/`tool_result`/`token`/`text_flush`), `tool_name`, `tool_input`, `text` |
+| `done`     | task finished | `status`, `result`, `error` |
 
-Also supports `task_summary` type for bulk sync.
+There's also `connection_request` (the backend asking for OAuth approval to an app), `notification`, and `peek_notification` (the soft expand). The app answers connection requests with `connection_response` back over the same socket.
 
-### Design
+## under the hood
 
-Nothing-inspired dark aesthetic: pure black surfaces, monospace display fonts, 8px spacing grid, and status-mapped accent colors (yellow for running, green for completed, red for awaiting approval).
+The app is MVVM SwiftUI. A `NotchViewModel` holds all the state and turns WebSocket events into model updates. Auth and settings persist to JSON in your home directory; threads and messages live in Supabase. Agent detection is a `ps` scan every few seconds plus reading Claude Code's own session files. System stats come straight from the Mach APIs.
+
+The backend is TypeScript ESM. The agent runner is provider-agnostic — same tool-use loop whether you're on Anthropic, OpenAI, or OpenRouter — with a five-iteration cap, DB persistence, and thread management. Composio handles the third-party OAuth. A scheduler loop picks up due tasks and runs them without tools.
+
+## the look
+
+Dark, Nothing-inspired. OLED-black surfaces, monospaced display type, an 8px grid, easeOut and nothing bouncy. Status maps to color — yellow when something's running, green when it's done, red when it wants your attention. All the tokens live in `Theme.swift` under `enum DN`. The landing page mirrors the same system in CSS so the demo notch looks like the real one.
