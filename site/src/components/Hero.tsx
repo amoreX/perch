@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react';
+import { motion, useMotionTemplate, useScroll, useTransform } from 'framer-motion';
 import Button from './Button';
 
 function AppleIcon() {
@@ -43,8 +44,20 @@ declare global {
 }
 
 export default function Hero() {
+  const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef  = useRef<HTMLVideoElement>(null);
+  const { scrollYProgress: mediaScrollProgress } = useScroll({
+    target: sectionRef,
+    offset: ['start start', 'end start'],
+  });
+  const { scrollYProgress: mediaBlurProgress } = useScroll({
+    target: sectionRef,
+    offset: ['end 400px', 'end start'],
+  });
+  const rawMediaY = useTransform(mediaScrollProgress, [0, 1], [0, 300]);
+  const rawMediaBlur = useTransform(mediaBlurProgress, [0, 1], [0, 40]);
+  const mediaFilter = useMotionTemplate`blur(${rawMediaBlur}px)`;
 
   useEffect(() => {
     const video  = videoRef.current;
@@ -124,54 +137,59 @@ export default function Hero() {
   }, []);
 
   return (
-    <section id="home" className="relative w-full overflow-hidden" style={{ height: '100dvh' }}>
-      {/* Hidden video — plays at full speed for smooth decode */}
-      <video
-        ref={videoRef}
-        muted
-        loop
-        playsInline
-        preload="auto"
+    <section ref={sectionRef} id="home" className="relative w-full overflow-hidden bg-[#111111]" style={{ height: '100dvh' }}>
+      <motion.div
         aria-hidden="true"
-        style={{ display: 'none', position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-      />
+        className="absolute inset-0"
+        style={{ y: rawMediaY, filter: mediaFilter, height: 'calc(100% + 300px)' }}
+      >
+        {/* Hidden video — plays at full speed for smooth decode */}
+        <video
+          ref={videoRef}
+          muted
+          loop
+          playsInline
+          preload="auto"
+          aria-hidden="true"
+          style={{ display: 'none', position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        />
 
-      {/* Canvas — receives frames at stop-motion rate, with grayscale + dim */}
-      <canvas
-        ref={canvasRef}
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          filter: 'saturate(0) brightness(1) contrast(0.9)',
-        }}
-      />
+        {/* Canvas — receives frames at stop-motion rate, with grayscale + dim */}
+        <canvas
+          ref={canvasRef}
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            filter: 'saturate(0) brightness(1) contrast(0.9)',
+          }}
+        />
 
-      {/* Purple tint overlay */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'rgba(107, 88, 228, 0.7)',
-          mixBlendMode: 'overlay',
-          
-          pointerEvents: 'none',
-        }}
-      />
+        {/* Purple tint overlay */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(107, 88, 228, 0.7)',
+            mixBlendMode: 'overlay',
+            pointerEvents: 'none',
+          }}
+        />
 
-      {/* Bottom fade */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: '60% 0 0 0',
-          background: 'linear-gradient(to bottom, transparent, rgba(0,0,0,0.3))',
-          pointerEvents: 'none',
-        }}
-      />
+        {/* Bottom fade */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: '60% 0 0 0',
+            background: 'linear-gradient(to bottom, transparent, rgba(0,0,0,0.3))',
+            pointerEvents: 'none',
+          }}
+        />
+      </motion.div>
 
       {/* Tagline — same container as navbar and all sections */}
       <div
@@ -209,9 +227,11 @@ export default function Hero() {
 
           {/* Download CTA */}
           <div style={{ marginTop: 64 }}>
-            <Button href="#download" size="md">
-              <AppleIcon />
-              Download now
+            <Button href="#download" size="xl">
+              <span className="[&_svg]:size-4">
+                <AppleIcon />
+              </span>
+              Get Perch For Mac
             </Button>
           </div>
         </div>

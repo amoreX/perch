@@ -20,10 +20,21 @@ export default function Download() {
   return (
     <section
       id="download"
-      className="border-t border-zinc-100"
-      style={{ background: '#f9f9fb' }}
+      className="relative overflow-hidden border-t border-zinc-100 bg-[#111111]"
     >
-      <div className="max-w-[1280px] mx-auto px-8 py-28 md:py-40">
+      <div
+        aria-hidden="true"
+        className="absolute -left-[600px] right-0 -top-[200px] bottom-0 translate-x-[600px] bg-cover bg-center grayscale"
+        style={{ backgroundImage: 'url(/pexels-gasparzaldo-19581192.jpg)', filter: 'saturate(0) brightness(0.8) contrast(0.7)' }}
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0"
+        style={{ background: 'rgba(107, 88, 228, 0.8)', mixBlendMode: 'overlay' , }}
+      />
+     
+
+      <div className="relative max-w-[1280px] mx-auto px-8 py-28 md:py-40">
         <div className="flex flex-col items-start gap-8">
           <h2
             className="m-0 leading-tight"
@@ -31,7 +42,7 @@ export default function Download() {
               fontFamily: "'Steps Mono', monospace",
               fontWeight: 400,
               fontSize: 'clamp(42px, 5vw, 72px)',
-              color: '#0a0a0a',
+              color: '#ffffff',
               letterSpacing: '0.01em',
               textWrap: 'balance',
             } as React.CSSProperties}
@@ -40,8 +51,10 @@ export default function Download() {
           </h2>
 
           <div className="flex items-center gap-3">
-            <Button href="#" size="lg">
-              <AppleIcon />
+            <Button href="#" size="xl">
+              <span className="[&_svg]:size-4">
+                <AppleIcon />
+              </span>
               Download for Mac
             </Button>
 
@@ -49,17 +62,19 @@ export default function Download() {
               href="https://github.com/amoreX/perch"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 no-underline rounded-full text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
+              className="inline-flex items-center gap-2 no-underline rounded-full text-white/55 hover:text-white hover:bg-white/10"
               style={{
                 fontFamily: "'Geist Mono', monospace",
-                fontSize: 14,
+                fontSize: 16,
                 fontWeight: 500,
                 letterSpacing: '-0.02em',
-                height: 40,
-                padding: '0 24px',
+                height: 48,
+                padding: '0 28px',
               }}
             >
-              <GitHubIcon />
+              <span className="[&_svg]:size-4">
+                <GitHubIcon />
+              </span>
               View source
             </a>
           </div>

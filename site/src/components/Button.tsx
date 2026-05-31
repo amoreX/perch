@@ -4,7 +4,7 @@ interface ButtonProps {
   children: ReactNode;
   onClick?: () => void;
   href?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   variant?: 'primary' | 'ghost';
   className?: string;
 }
@@ -29,6 +29,7 @@ const sizeMap: Record<string, string> = {
   sm: 'h-8 px-3.5 text-xs',
   md: 'h-9 px-4 text-sm',
   lg: 'h-10 px-6 text-sm',
+  xl: 'h-12 px-7 text-base',
 };
 
 function hoverStart(e: React.MouseEvent<HTMLElement>) {
@@ -62,7 +63,7 @@ const sharedStyle: React.CSSProperties = {
 };
 
 const baseClass =
-  'inline-flex items-center justify-center gap-1.5 rounded-full font-semibold cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-[#8B7CF6]/60';
+  'inline-flex items-center justify-center gap-1.5 rounded-full font-semibold cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-[#8B7CF6]/60 [&_svg]:-translate-y-px';
 
 export default function Button({
   children,

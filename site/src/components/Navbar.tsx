@@ -249,21 +249,22 @@ export default function Navbar() {
           background: NOTCH,
           borderRadius: '0 0 28px 0',
           paddingLeft: CONTAINER_ALIGN,
-          paddingRight: '16px',
+          paddingRight: '8px',
         }}
       >
         <NotchCornerShoulder side="right" />
         <NotchRailShoulder side="left" />
         <a
           href="/"
-          className="h-10 px-3.5 flex items-center rounded-full bg-white/10 no-underline"
+          className="h-10 px-6 inline-flex items-center justify-center rounded-full bg-white/10 no-underline"
           style={{
             fontFamily: "'Steps Mono', monospace",
-            fontSize: 18,
+            fontSize: 17,
             fontWeight: 400,
             color: '#ffffff',
             letterSpacing: '0.02em',
             lineHeight: 1,
+            paddingTop: 1,
           }}
         >
           Perch
@@ -343,7 +344,7 @@ export default function Navbar() {
 
       {/* Right notch — bleeds to screen right edge, only bottom-left rounded */}
       <div
-        className="absolute top-0 right-0 flex items-center h-14 pointer-events-auto"
+        className="absolute top-0 right-0 flex items-center gap-2 h-14 pointer-events-auto"
         style={{
           background: NOTCH,
           borderRadius: '0 0 0 28px',
@@ -357,6 +358,19 @@ export default function Navbar() {
           <AppleIcon />
           Download
         </Button>
+        <a
+          href="#contact"
+          aria-label="Contact"
+          className="h-10 w-10 inline-flex items-center justify-center rounded-full bg-white/10 text-white no-underline transition-colors hover:bg-white/15"
+          style={{
+            fontFamily: "'Geist Mono', monospace",
+            fontSize: 15,
+            fontWeight: 600,
+            lineHeight: 1,
+          }}
+        >
+          ?
+        </a>
       </div>
     </header>
   );
