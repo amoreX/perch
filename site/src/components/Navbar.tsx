@@ -19,11 +19,13 @@ function AppleIcon() {
 
 const NOTCH = '#111111';
 const BAR_HEIGHT = 10;
+const SIDE_BAR_WIDTH = 10;
 const SHOULDER_SIZE = 8;
 const HOVERED_SHOULDER_SIZE = 12;
 const MIDDLE_SHOULDER_OVERLAP = 0.5;
 const CENTER_NOTCH_HEIGHT = 56;
 const CENTER_NOTCH_PADDING_X = 8;
+const CENTER_NOTCH_HOVER_PADDING_X = 14;
 const CENTER_SECTION_FALLBACK_WIDTH = 86;
 const CENTER_INDICATOR_HEIGHT = 40;
 const NOTCH_SPRING = { type: 'spring' as const, stiffness: 420, damping: 32 };
@@ -69,6 +71,62 @@ function NotchCornerShoulder({
   );
 }
 
+function NavbarFrameShoulder({ side }: { side: 'left' | 'right' }) {
+  const size = SHOULDER_SIZE;
+  const controlNear = Number((size * 0.447).toFixed(2));
+  const controlFar = Number((size - controlNear).toFixed(2));
+  const path =
+    side === 'left'
+      ? `M0 0H${size}V${size}C${size} ${controlNear} ${controlFar} 0 0 0Z`
+      : `M${size} 0H0V${size}C0 ${controlNear} ${controlNear} 0 ${size} 0Z`;
+
+  return (
+    <svg
+      aria-hidden="true"
+      className="absolute pointer-events-none"
+      viewBox={`0 0 ${size} ${size}`}
+      style={{
+        top: BAR_HEIGHT,
+        [side]: SIDE_BAR_WIDTH,
+        width: size,
+        height: size,
+        display: 'block',
+      }}
+    >
+      <path d={path} fill={NOTCH} />
+    </svg>
+  );
+}
+
+function NotchRailShoulder({ side }: { side: 'left' | 'right' }) {
+  const size = SHOULDER_SIZE;
+  const controlNear = Number((size * 0.447).toFixed(2));
+  const controlFar = Number((size - controlNear).toFixed(2));
+  const path =
+    side === 'left'
+      ? `M0 0H${size}V${size}C${size} ${controlNear} ${controlFar} 0 0 0Z`
+      : `M${size} 0H0V${size}C0 ${controlNear} ${controlNear} 0 ${size} 0Z`;
+
+  return (
+    <svg
+      aria-hidden="true"
+      className="absolute pointer-events-none"
+      viewBox={`0 0 ${size} ${size}`}
+      style={{
+        [side]: SIDE_BAR_WIDTH,
+        top: 56,
+        width: size,
+        height: size,
+        display: 'block',
+        transform: side === 'left' ? 'rotate(-90deg)' : 'rotate(90deg)',
+        transformOrigin: 'center',
+      }}
+    >
+      <path d={path} fill={NOTCH} />
+    </svg>
+  );
+}
+
 export default function Navbar() {
   const [activeSection, setActiveSection] = useState(NAV_SECTIONS[0].id);
   const [isCenterHovered, setIsCenterHovered] = useState(false);
@@ -89,6 +147,7 @@ export default function Navbar() {
   const sectionRowWidth = sectionWidths.reduce((total, width) => total + width, 0);
   const expandedViewportWidth = sectionRowWidth;
   const centerViewportWidth = isCenterHovered ? expandedViewportWidth : activeSectionWidth;
+  const centerPaddingX = isCenterHovered ? CENTER_NOTCH_HOVER_PADDING_X : CENTER_NOTCH_PADDING_X;
   const sectionRowX = isCenterHovered
     ? 0
     : -activeSectionOffset;
@@ -180,6 +239,8 @@ export default function Navbar() {
     <header className="fixed top-0 left-0 right-0 z-50 pointer-events-none">
       {/* Full-width connecting bar */}
       <div className="absolute top-0 left-0 right-0 h-[10px] bg-[#111111] pointer-events-auto" />
+      <NavbarFrameShoulder side="left" />
+      <NavbarFrameShoulder side="right" />
 
       {/* Left notch — bleeds to screen left edge, only bottom-right rounded */}
       <div
@@ -192,9 +253,10 @@ export default function Navbar() {
         }}
       >
         <NotchCornerShoulder side="right" />
+        <NotchRailShoulder side="left" />
         <a
           href="/"
-          className="no-underline"
+          className="h-10 px-3.5 flex items-center rounded-full bg-white/10 no-underline"
           style={{
             fontFamily: "'Steps Mono', monospace",
             fontSize: 18,
@@ -216,10 +278,10 @@ export default function Navbar() {
         initial={false}
         style={{ x: '-50%', background: NOTCH, borderRadius: '0 0 28px 28px' }}
         animate={{
-          width: centerViewportWidth + CENTER_NOTCH_PADDING_X * 2,
+          width: centerViewportWidth + centerPaddingX * 2,
           height: CENTER_NOTCH_HEIGHT,
-          paddingLeft: CENTER_NOTCH_PADDING_X,
-          paddingRight: CENTER_NOTCH_PADDING_X,
+          paddingLeft: centerPaddingX,
+          paddingRight: centerPaddingX,
         }}
         transition={NOTCH_SPRING}
       >
@@ -231,8 +293,8 @@ export default function Navbar() {
           initial={false}
           animate={{
             left: isCenterHovered
-              ? CENTER_NOTCH_PADDING_X + activeSectionOffset
-              : CENTER_NOTCH_PADDING_X,
+              ? centerPaddingX + activeSectionOffset
+              : centerPaddingX,
             width: activeSectionWidth,
           }}
           transition={NOTCH_SPRING}
@@ -286,11 +348,12 @@ export default function Navbar() {
           background: NOTCH,
           borderRadius: '0 0 0 28px',
           paddingRight: CONTAINER_ALIGN,
-          paddingLeft: '12px',
+          paddingLeft: '8px',
         }}
       >
         <NotchCornerShoulder side="left" />
-        <Button href="#download" size="sm">
+        <NotchRailShoulder side="right" />
+        <Button href="#download" size="lg">
           <AppleIcon />
           Download
         </Button>
