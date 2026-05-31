@@ -57,20 +57,27 @@ struct AgentChatView: View {
     @ObservedObject var viewModel: NotchViewModel
     let taskId: String
 
+    @State private var autoScroll = true
+    @State private var messageText: String = ""
+    @FocusState private var isMessageFocused: Bool
+
+    private let bottomAnchorId = "bottom-anchor"
+
     private var task: SubagentTask? {
         viewModel.taskById(taskId)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 10) {
             header
-            Spacer().frame(height: DN.spaceSM)
 
             if let task = task {
                 chatBody(task)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Spacer()
             }
 
-            Spacer().frame(height: DN.spaceSM)
             inputBar
         }
     }
@@ -78,25 +85,27 @@ struct AgentChatView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: DN.spaceSM) {
-            Button(action: {
+        HStack(spacing: 10) {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Back")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .frame(height: 24)
+            .glassEffect(.regular, in: .capsule)
+            .contentShape(.capsule)
+            .onTapGesture {
                 withAnimation(DN.transition) {
                     viewModel.viewState = .taskList
                 }
-            }) {
-                Text("<")
-                    .font(DN.mono(12, weight: .medium))
-                    .foregroundColor(DN.textSecondary)
             }
-            .buttonStyle(.plain)
 
             if let task = task {
-                Circle()
-                    .fill(DN.statusColor(task.status))
-                    .frame(width: 6, height: 6)
-
                 Text(task.description ?? task.task)
-                    .font(DN.body(12, weight: .medium))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(DN.textPrimary)
                     .lineLimit(1)
             }
@@ -107,30 +116,28 @@ struct AgentChatView: View {
 
     // MARK: - Chat Body
 
-    @State private var autoScroll = true
-    @State private var scrollTarget: String? = nil
-    private let bottomAnchorId = "bottom-anchor"
-
     private func chatBody(_ task: SubagentTask) -> some View {
-        return ScrollViewReader { proxy in
+        ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: DN.spaceXS) {
+                LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(task.chatHistory) { msg in
                         chatBubble(msg)
                     }
 
-                    // Streaming text
                     if task.status == .running && !task.streamingText.isEmpty {
-                        StreamingTextView(text: task.streamingText)
+                        StreamingMessage(text: task.streamingText)
                     }
 
                     if task.status == .running && task.streamingText.isEmpty {
-                        typingIndicator
+                        ThinkingBubble()
                     }
 
                     Color.clear.frame(height: 1).id(bottomAnchorId)
                 }
+                .padding(.top, 4)
+                .padding(.bottom, 8)
             }
+            .smartScrollFade(20)
             .onReceive(NotificationCenter.default.publisher(for: NSScrollView.willStartLiveScrollNotification)) { _ in
                 autoScroll = false
             }
@@ -141,70 +148,29 @@ struct AgentChatView: View {
             .onChange(of: task.streamingText) { _, _ in
                 if autoScroll { scrollToBottom(proxy) }
             }
+            .onAppear { scrollToBottom(proxy) }
         }
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.15)) {
+        withAnimation(.easeOut(duration: 0.18)) {
             proxy.scrollTo(bottomAnchorId, anchor: .bottom)
         }
     }
 
-    private var typingIndicator: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { i in
-                Circle()
-                    .fill(DN.textDisabled)
-                    .frame(width: 4, height: 4)
-                    .opacity(typingDotOpacity(i))
-            }
-        }
-        .padding(.vertical, DN.spaceSM)
-        .onAppear {
-            autoScroll = true
-            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                typingPhase.toggle()
-            }
-        }
-    }
-
-    @State private var typingPhase = false
-
-    private func typingDotOpacity(_ index: Int) -> Double {
-        switch index {
-        case 0: return typingPhase ? 1.0 : 0.3
-        case 1: return 0.6
-        case 2: return typingPhase ? 0.3 : 1.0
-        default: return 0.3
-        }
-    }
+    // MARK: - Bubbles
 
     @ViewBuilder
     private func chatBubble(_ msg: ChatMessage) -> some View {
         switch msg.role {
         case "user":
-            HStack {
-                Spacer()
-                Text(msg.content)
-                    .font(DN.body(11, weight: .medium))
-                    .foregroundColor(DN.textPrimary)
-                    .padding(.horizontal, DN.spaceSM + DN.spaceXS)
-                    .padding(.vertical, DN.spaceXS + 1)
-                    .background(DN.surfaceRaised)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(DN.borderVisible, lineWidth: 1)
-                    )
-            }
-            .padding(.vertical, DN.space2xs)
+            UserBubble(text: msg.content)
 
         case "agent":
-            MarkdownView(text: msg.content, isFinal: true)
-                .padding(.vertical, DN.spaceXS)
+            AgentBubble(text: msg.content)
 
         case "tool":
-            toolCallBubble(msg)
+            ToolBubble(msg: msg)
 
         case "connection_request":
             let reqStatus = ConnectionRequestStatus(rawValue: msg.toolOutput ?? "pending") ?? .pending
@@ -223,50 +189,6 @@ struct AgentChatView: View {
         }
     }
 
-    private func toolCallBubble(_ msg: ChatMessage) -> some View {
-        let name = msg.toolName ?? "tool"
-        let hasOutput = msg.toolOutput != nil && !(msg.toolOutput?.isEmpty ?? true)
-
-        return VStack(alignment: .leading, spacing: DN.space2xs) {
-            // Tool header: icon + name + input summary
-            HStack(spacing: DN.spaceXS) {
-                Image(systemName: hasOutput ? "checkmark.circle.fill" : "circle.dotted")
-                    .font(.system(size: 9))
-                    .foregroundColor(hasOutput ? DN.success : DN.warning)
-
-                Image(systemName: toolIcon(name))
-                    .font(.system(size: 9))
-                    .foregroundColor(DN.textDisabled)
-
-                Text(toolCompletedText(name))
-                    .font(DN.mono(9, weight: .medium))
-                    .foregroundColor(DN.textSecondary)
-            }
-
-            // Input line
-            if let input = msg.toolInput, !input.isEmpty {
-                Text(input)
-                    .font(DN.mono(9))
-                    .foregroundColor(DN.textDisabled)
-                    .lineLimit(2)
-                    .padding(.leading, DN.spaceMD + DN.spaceXS)
-            }
-
-            // Output preview (collapsed)
-            if let output = msg.toolOutput, !output.isEmpty {
-                Text(output)
-                    .font(DN.mono(8))
-                    .foregroundColor(DN.textDisabled.opacity(0.7))
-                    .lineLimit(3)
-                    .padding(.leading, DN.spaceMD + DN.spaceXS)
-            }
-        }
-        .padding(.vertical, DN.space2xs)
-        .padding(.horizontal, DN.spaceXS)
-        .background(DN.surface.opacity(0.4))
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-    }
-
     // MARK: - Connection Request Bubble
 
     private func connectionRequestBubble(_ msg: ChatMessage) -> some View {
@@ -277,100 +199,90 @@ struct AgentChatView: View {
         let statusRaw = msg.toolOutput ?? "pending"
         let status = ConnectionRequestStatus(rawValue: statusRaw) ?? .pending
 
-        return VStack(alignment: .leading, spacing: DN.spaceSM) {
-            // Header
-            HStack(spacing: DN.spaceXS) {
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
                 Image(systemName: appIcon(appType))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(DN.warning)
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 8))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(DN.warning)
                 Text("CONNECTION REQUIRED")
-                    .font(DN.label(8))
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(1)
                     .foregroundColor(DN.warning)
             }
 
-            // App name + reason
-            Text("Connect **\(displayName)** to continue")
-                .font(DN.body(11, weight: .medium))
-                .foregroundColor(DN.textPrimary)
+            Text("Connect ").font(.system(size: 12)).foregroundColor(DN.textPrimary)
+                + Text(displayName).font(.system(size: 12, weight: .semibold)).foregroundColor(DN.textPrimary)
+                + Text(" to continue").font(.system(size: 12)).foregroundColor(DN.textPrimary)
 
             Text(reason)
-                .font(DN.body(10))
+                .font(.system(size: 11))
                 .foregroundColor(DN.textSecondary)
                 .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
 
-            // Action buttons or status
             switch status {
             case .pending:
-                HStack(spacing: DN.spaceSM) {
-                    Button(action: { viewModel.approveConnectionRequest(requestId) }) {
-                        Text("CONNECT")
-                            .font(DN.label(8))
-                            .tracking(0.6)
-                            .foregroundColor(DN.black)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(DN.success)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                    }
-                    .buttonStyle(.plain)
+                HStack(spacing: 8) {
+                    Text("Connect")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .frame(height: 26)
+                        .glassEffect(Glass.regular.tint(DN.activeAccent), in: .capsule)
+                        .contentShape(.capsule)
+                        .onTapGesture { viewModel.approveConnectionRequest(requestId) }
 
-                    Button(action: { viewModel.denyConnectionRequest(requestId) }) {
-                        Text("DENY")
-                            .font(DN.label(8))
-                            .tracking(0.6)
-                            .foregroundColor(DN.textSecondary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(DN.border, lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(.plain)
+                    Text("Deny")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .frame(height: 26)
+                        .glassEffect(.regular, in: .capsule)
+                        .contentShape(.capsule)
+                        .onTapGesture { viewModel.denyConnectionRequest(requestId) }
                 }
 
             case .connecting:
-                HStack(spacing: DN.spaceXS) {
+                HStack(spacing: 6) {
                     ProgressView()
-                        .scaleEffect(0.5)
+                        .scaleEffect(0.55)
                         .frame(width: 14, height: 14)
-                    Text("Connecting \(displayName)...")
-                        .font(DN.mono(9))
+                    Text("Connecting \(displayName)…")
+                        .font(.system(size: 10))
                         .foregroundColor(DN.warning)
                 }
 
             case .approved:
-                HStack(spacing: DN.spaceXS) {
+                HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11))
                         .foregroundColor(DN.success)
                     Text("\(displayName) connected")
-                        .font(DN.mono(9))
+                        .font(.system(size: 10))
                         .foregroundColor(DN.success)
                 }
 
             case .denied:
-                HStack(spacing: DN.spaceXS) {
+                HStack(spacing: 6) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11))
                         .foregroundColor(DN.textDisabled)
                     Text("Connection denied")
-                        .font(DN.mono(9))
+                        .font(.system(size: 10))
                         .foregroundColor(DN.textDisabled)
                 }
             }
         }
-        .padding(DN.spaceSM)
-        .background(DN.surface)
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(status == .pending ? DN.warning.opacity(0.4) : DN.border, lineWidth: 1)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(DN.warning.opacity(0.08))
         )
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .padding(.vertical, DN.spaceXS)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(DN.warning.opacity(0.25), lineWidth: 1)
+        )
     }
 
     private func appIcon(_ appType: String) -> String {
@@ -385,47 +297,38 @@ struct AgentChatView: View {
 
     // MARK: - Input Bar
 
-    @State private var messageText: String = ""
-
     private var inputBar: some View {
-        HStack(spacing: DN.spaceSM) {
-            Image(systemName: "sparkle")
-                .font(.system(size: 9, weight: .medium))
-                .foregroundColor(DN.textDisabled)
+        HStack(spacing: 10) {
+            TextField("Message agent", text: $messageText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .foregroundStyle(.white)
+                .focused($isMessageFocused)
+                .onSubmit { sendMessage() }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            TextField("", text: $messageText, prompt: Text("Message agent...")
-                .font(DN.body(11))
-                .foregroundColor(DN.textDisabled)
-            )
-            .textFieldStyle(.plain)
-            .font(DN.body(11))
-            .foregroundColor(DN.textPrimary)
-            .onSubmit { sendMessage() }
-
-            if !messageText.isEmpty {
-                Button(action: { sendMessage() }) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(DN.black)
-                        .frame(width: 18, height: 18)
-                        .background(DN.textDisplay)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .transition(.scale.combined(with: .opacity))
-            }
+            sendButton
         }
-        .padding(.horizontal, DN.spaceSM + DN.spaceXS)
-        .padding(.vertical, DN.spaceXS + 2)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(DN.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(DN.border, lineWidth: 1)
-        )
-        .animation(.easeOut(duration: DN.microDuration), value: messageText.isEmpty)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .glassEffect(.regular, in: .capsule)
+        .contentShape(.capsule)
+        .onTapGesture { isMessageFocused = true }
+    }
+
+    private var sendButton: some View {
+        let enabled = !messageText.trimmingCharacters(in: .whitespaces).isEmpty
+        return Image(systemName: "arrow.up")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 24, height: 24)
+            .glassEffect(
+                enabled ? Glass.regular.tint(DN.activeAccent) : Glass.regular,
+                in: .circle
+            )
+            .opacity(enabled ? 1.0 : 0.55)
+            .contentShape(.circle)
+            .onTapGesture { if enabled { sendMessage() } }
     }
 
     private func sendMessage() {
@@ -436,29 +339,146 @@ struct AgentChatView: View {
     }
 }
 
-// MARK: - Streaming Text View
+// MARK: - User bubble (right-aligned glass capsule)
 
-struct StreamingTextView: View {
+private struct UserBubble: View {
     let text: String
-    @State private var cursorVisible = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MarkdownView(text: text, isFinal: true)
-
-            // Blinking cursor
-            Rectangle()
-                .fill(DN.textPrimary)
-                .frame(width: 1.5, height: 13)
-                .opacity(cursorVisible ? 1 : 0)
-                .padding(.top, 2)
+        HStack {
+            Spacer(minLength: 48)
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(DN.activeAccent.opacity(0.55))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, DN.spaceXS)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
-                cursorVisible.toggle()
+    }
+}
+
+// MARK: - Agent bubble (full width, plain content)
+
+private struct AgentBubble: View {
+    let text: String
+
+    var body: some View {
+        MarkdownView(text: text, isFinal: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Streaming message (character-fade in)
+
+private struct StreamingMessage: View {
+    let text: String
+
+    var body: some View {
+        MarkdownView(text: text, isFinal: false)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Thinking bubble
+
+private struct ThinkingBubble: View {
+    @State private var phase = 0
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(.white)
+                    .frame(width: 5, height: 5)
+                    .opacity(phase == i ? 1 : 0.3)
+                    .scaleEffect(phase == i ? 1.0 : 0.85)
             }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .glassEffect(.regular, in: .capsule)
+        .onAppear {
+            Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { _ in
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    phase = (phase + 1) % 3
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Tool call bubble
+
+private struct ToolBubble: View {
+    let msg: ChatMessage
+    @State private var expanded = false
+
+    private var name: String { msg.toolName ?? "tool" }
+    private var hasOutput: Bool { !(msg.toolOutput?.isEmpty ?? true) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: toolIcon(name))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DN.accent.opacity(0.8))
+                    .frame(width: 22, height: 22)
+                    .glassEffect(.regular, in: .circle)
+
+                Text(toolCompletedText(name))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+
+                if let input = msg.toolInput, !input.isEmpty {
+                    Text(input)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Color.white.opacity(0.4))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .layoutPriority(-1)
+                }
+
+                Spacer(minLength: 0)
+
+                if hasOutput {
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(Color.white.opacity(0.35))
+                } else {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.6)
+                        .frame(width: 14, height: 14)
+                }
+            }
+
+            if expanded, let output = msg.toolOutput, !output.isEmpty {
+                Text(output)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(Color.white.opacity(0.5))
+                    .padding(.top, 4)
+                    .padding(.leading, 30)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+        .contentShape(.rect(cornerRadius: 12))
+        .onTapGesture {
+            guard hasOutput else { return }
+            withAnimation(.easeOut(duration: 0.2)) { expanded.toggle() }
         }
     }
 }
@@ -470,7 +490,7 @@ struct MarkdownView: View {
     let isFinal: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DN.spaceXS) {
+        VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(parseBlocks().enumerated()), id: \.offset) { _, block in
                 renderBlock(block)
             }
@@ -479,10 +499,10 @@ struct MarkdownView: View {
     }
 
     private enum MdBlock {
-        case heading(Int, String) // level, text
+        case heading(Int, String)
         case paragraph(String)
         case bullet(String)
-        case code(String) // code block content
+        case code(String)
         case divider
     }
 
@@ -493,7 +513,6 @@ struct MarkdownView: View {
         var codeLines: [String] = []
 
         for line in lines {
-            // Code blocks
             if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
                 if inCodeBlock {
                     blocks.append(.code(codeLines.joined(separator: "\n")))
@@ -514,29 +533,19 @@ struct MarkdownView: View {
                 continue
             }
 
-            // Headings
             if trimmed.hasPrefix("### ") {
                 blocks.append(.heading(3, String(trimmed.dropFirst(4))))
             } else if trimmed.hasPrefix("## ") {
                 blocks.append(.heading(2, String(trimmed.dropFirst(3))))
             } else if trimmed.hasPrefix("# ") {
                 blocks.append(.heading(1, String(trimmed.dropFirst(2))))
-            }
-            // Bullets
-            else if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
+            } else if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
                 blocks.append(.bullet(String(trimmed.dropFirst(2))))
-            }
-            // Numbered lists
-            else if let match = trimmed.range(of: #"^\d+\.\s"#, options: .regularExpression) {
+            } else if let match = trimmed.range(of: #"^\d+\.\s"#, options: .regularExpression) {
                 blocks.append(.bullet(String(trimmed[match.upperBound...])))
-            }
-            // Divider
-            else if trimmed == "---" || trimmed == "***" {
+            } else if trimmed == "---" || trimmed == "***" {
                 blocks.append(.divider)
-            }
-            // Paragraph
-            else {
-                // Merge consecutive paragraph lines
+            } else {
                 if case .paragraph(let prev) = blocks.last {
                     blocks[blocks.count - 1] = .paragraph(prev + " " + trimmed)
                 } else {
@@ -545,7 +554,6 @@ struct MarkdownView: View {
             }
         }
 
-        // Close unclosed code block
         if inCodeBlock && !codeLines.isEmpty {
             blocks.append(.code(codeLines.joined(separator: "\n")))
         }
@@ -557,77 +565,77 @@ struct MarkdownView: View {
     private func renderBlock(_ block: MdBlock) -> some View {
         switch block {
         case .heading(let level, let text):
-            let size: CGFloat = level == 1 ? 14 : level == 2 ? 12 : 11
+            let size: CGFloat = level == 1 ? 16 : level == 2 ? 14 : 13
             renderInline(text)
                 .font(.system(size: size, weight: .semibold, design: .default))
                 .foregroundColor(DN.textDisplay)
+                .padding(.top, 2)
 
         case .paragraph(let text):
             renderInline(text)
-                .font(DN.body(isFinal ? 12 : 11))
-                .foregroundColor(isFinal ? DN.textPrimary : DN.textSecondary)
+                .font(.system(size: 13))
+                .foregroundColor(DN.textPrimary)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
 
         case .bullet(let text):
-            HStack(alignment: .top, spacing: DN.spaceSM) {
-                Text("\u{2022}")
-                    .font(DN.body(12, weight: .bold))
-                    .foregroundColor(DN.textDisabled)
-                    .frame(width: 8)
+            HStack(alignment: .top, spacing: 8) {
+                Circle()
+                    .fill(DN.textDisabled)
+                    .frame(width: 4, height: 4)
+                    .padding(.top, 7)
 
                 renderInline(text)
-                    .font(DN.body(isFinal ? 12 : 11))
-                    .foregroundColor(isFinal ? DN.textPrimary : DN.textSecondary)
+                    .font(.system(size: 13))
+                    .foregroundColor(DN.textPrimary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
         case .code(let code):
             Text(code)
-                .font(DN.mono(10))
+                .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(DN.textPrimary)
-                .padding(DN.spaceSM)
+                .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(DN.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
+                )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(DN.border, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
                 )
 
         case .divider:
             Rectangle()
-                .fill(DN.border)
+                .fill(Color.white.opacity(0.08))
                 .frame(height: 1)
-                .padding(.vertical, DN.space2xs)
+                .padding(.vertical, 2)
         }
     }
 
     private func renderInline(_ text: String) -> Text {
-        // Parse inline markdown: **bold**, *italic*, `code`
         var result = Text("")
         var remaining = text[text.startIndex...]
 
         while !remaining.isEmpty {
-            // Inline code: `...`
             if remaining.hasPrefix("`"), let end = remaining.dropFirst().firstIndex(of: "`") {
                 let code = remaining[remaining.index(after: remaining.startIndex)..<end]
                 result = result + Text(String(code))
-                    .font(DN.mono(11))
+                    .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(DN.claudeOrange)
                 remaining = remaining[remaining.index(after: end)...]
-            }
-            // Bold: **...**
-            else if remaining.hasPrefix("**"), let end = remaining.dropFirst(2).range(of: "**") {
+            } else if remaining.hasPrefix("**"), let end = remaining.dropFirst(2).range(of: "**") {
                 let bold = remaining[remaining.index(remaining.startIndex, offsetBy: 2)..<end.lowerBound]
                 result = result + Text(String(bold)).bold()
                 remaining = remaining[end.upperBound...]
-            }
-            // Italic: *...*
-            else if remaining.hasPrefix("*"), let end = remaining.dropFirst().firstIndex(of: "*") {
+            } else if remaining.hasPrefix("*"), let end = remaining.dropFirst().firstIndex(of: "*") {
                 let italic = remaining[remaining.index(after: remaining.startIndex)..<end]
                 result = result + Text(String(italic)).italic()
                 remaining = remaining[remaining.index(after: end)...]
-            }
-            // Plain text until next marker
-            else {
+            } else {
                 if let next = remaining.firstIndex(where: { $0 == "*" || $0 == "`" }) {
                     result = result + Text(String(remaining[remaining.startIndex..<next]))
                     remaining = remaining[next...]
@@ -639,6 +647,16 @@ struct MarkdownView: View {
         }
 
         return result
+    }
+}
+
+// MARK: - Streaming Text shim (preserves callers)
+
+struct StreamingTextView: View {
+    let text: String
+
+    var body: some View {
+        StreamingMessage(text: text)
     }
 }
 
@@ -664,15 +682,14 @@ struct DraftCardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DN.spaceSM) {
-            // Header
-            HStack(spacing: DN.spaceSM) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .regular))
+                    .font(.system(size: 11))
                     .foregroundColor(DN.textDisabled)
 
                 Text(typeLabel)
-                    .font(DN.label(9))
+                    .font(.system(size: 9, weight: .semibold))
                     .tracking(1)
                     .foregroundColor(DN.textDisabled)
 
@@ -680,60 +697,43 @@ struct DraftCardView: View {
 
                 if let recipient = draft.recipient {
                     Text(recipient)
-                        .font(DN.mono(10))
+                        .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(DN.textDisabled)
                 }
             }
 
-            // Title — secondary prominence
             Text(draft.title)
-                .font(DN.body(12, weight: .medium))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(DN.textPrimary)
 
-            // Preview
             Text(draft.preview)
-                .font(DN.body(11))
+                .font(.system(size: 11))
                 .foregroundColor(DN.textSecondary)
                 .lineLimit(4)
                 .fixedSize(horizontal: false, vertical: true)
 
-            // Actions
-            HStack(spacing: DN.spaceSM) {
+            HStack(spacing: 8) {
                 Spacer()
 
-                Button(action: {}) {
-                    Text("REJECT")
-                        .font(DN.label(10))
-                        .tracking(0.8)
-                        .foregroundColor(DN.accent)
-                        .padding(.horizontal, DN.spaceMD)
-                        .padding(.vertical, DN.spaceXS + DN.space2xs)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 999)
-                                .stroke(DN.accent.opacity(0.4), lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
+                Text("Reject")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .frame(height: 24)
+                    .glassEffect(.regular, in: .capsule)
+                    .contentShape(.capsule)
 
-                Button(action: {}) {
-                    Text("APPROVE")
-                        .font(DN.label(10))
-                        .tracking(0.8)
-                        .foregroundColor(DN.black)
-                        .padding(.horizontal, DN.spaceMD)
-                        .padding(.vertical, DN.spaceXS + DN.space2xs)
-                        .background(DN.textDisplay)
-                        .clipShape(RoundedRectangle(cornerRadius: 999))
-                }
-                .buttonStyle(.plain)
+                Text("Approve")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .frame(height: 24)
+                    .glassEffect(Glass.regular.tint(DN.activeAccent), in: .capsule)
+                    .contentShape(.capsule)
             }
         }
-        .padding(DN.spaceSM + DN.spaceXS)
-        .background(DN.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(DN.border, lineWidth: 1)
-        )
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentCard(cornerRadius: 14)
     }
 }

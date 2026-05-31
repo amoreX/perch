@@ -1,18 +1,18 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 
 import PackageDescription
 
 let package = Package(
-    name: "Danotch",
+    name: "Perch",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v26)
     ],
     dependencies: [
         .package(url: "https://github.com/httpswift/swifter.git", from: "1.5.0")
     ],
     targets: [
         .executableTarget(
-            name: "Danotch",
+            name: "Perch",
             dependencies: [
                 .product(name: "Swifter", package: "swifter")
             ],

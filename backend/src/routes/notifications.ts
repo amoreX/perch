@@ -9,7 +9,7 @@ export function createNotificationRoutes(): Router {
   router.get('/', requireAuth, async (req, res) => {
     const userId = req.user!.sub;
     const { data, error } = await supabase
-      .from('notifications')
+      .from('danotch_notifications')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
@@ -26,7 +26,7 @@ export function createNotificationRoutes(): Router {
   router.get('/unread-count', requireAuth, async (req, res) => {
     const userId = req.user!.sub;
     const { count, error } = await supabase
-      .from('notifications')
+      .from('danotch_notifications')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('read', false);
@@ -42,7 +42,7 @@ export function createNotificationRoutes(): Router {
   router.post('/:id/read', requireAuth, async (req, res) => {
     const userId = req.user!.sub;
     const { error } = await supabase
-      .from('notifications')
+      .from('danotch_notifications')
       .update({ read: true })
       .eq('id', req.params.id)
       .eq('user_id', userId);
@@ -58,7 +58,7 @@ export function createNotificationRoutes(): Router {
   router.post('/read-all', requireAuth, async (req, res) => {
     const userId = req.user!.sub;
     const { error } = await supabase
-      .from('notifications')
+      .from('danotch_notifications')
       .update({ read: true })
       .eq('user_id', userId)
       .eq('read', false);
@@ -74,7 +74,7 @@ export function createNotificationRoutes(): Router {
   router.delete('/all', requireAuth, async (req, res) => {
     const userId = req.user!.sub;
     const { error } = await supabase
-      .from('notifications')
+      .from('danotch_notifications')
       .delete()
       .eq('user_id', userId);
 

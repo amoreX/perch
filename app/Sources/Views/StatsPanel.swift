@@ -275,184 +275,194 @@ struct StatsPanel: View {
     @ObservedObject var viewModel: NotchViewModel
     var monitor: SystemStatsMonitor { viewModel.statsMonitor }
 
-    private let gap: CGFloat = 5
-
     var body: some View {
-        VStack(spacing: gap) {
-            // Row 1: CPU + RAM arc gauges
-            HStack(spacing: gap) {
-                ArcGaugeCell(
-                    label: "CPU",
-                    value: monitor.cpuUsage, maxValue: 100,
-                    displayValue: String(format: "%.0f", monitor.cpuUsage),
-                    unit: "%", color: cpuColor,
-                    history: monitor.cpuHistory
-                )
-
-                ArcGaugeCell(
-                    label: "RAM",
-                    value: monitor.ramPercent, maxValue: 100,
-                    displayValue: fmtGB(monitor.ramUsed),
-                    unit: "/ \(fmtGB(monitor.ramTotal))",
-                    color: ramColor, history: nil
-                )
-            }
-
-            // Row 2: Network (compact) + Disk
-            HStack(spacing: gap) {
-                // Network combined
-                VStack(spacing: 0) {
-                    netRow(direction: "\u{2193}", label: "DOWN", value: fmtBytes(monitor.netDown),
-                           color: DN.success, history: monitor.netDownHistory)
-
-                    Rectangle().fill(Color.white.opacity(0.05)).frame(height: 1)
-                        .padding(.horizontal, DN.spaceSM)
-
-                    netRow(direction: "\u{2191}", label: "UP", value: fmtBytes(monitor.netUp),
-                           color: DN.warning, history: monitor.netUpHistory)
+        ScrollView {
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    statGauge(
+                        title: "CPU",
+                        value: monitor.cpuUsage / 100,
+                        primary: "\(Int(monitor.cpuUsage))%",
+                        secondary: "of capacity",
+                        symbol: "cpu.fill",
+                        tint: tintFor(monitor.cpuUsage, warnAt: 50, dangerAt: 80)
+                    )
+                    statGauge(
+                        title: "Memory",
+                        value: monitor.ramPercent / 100,
+                        primary: fmtGB(monitor.ramUsed),
+                        secondary: "of \(fmtGB(monitor.ramTotal)) GB",
+                        symbol: "memorychip.fill",
+                        tint: tintFor(monitor.ramPercent, warnAt: 60, dangerAt: 85)
+                    )
                 }
-                .frame(maxHeight: .infinity)
-                .glassCell()
 
-                // Disk
-                VStack(alignment: .leading, spacing: DN.spaceXS) {
-                    Text("DISK")
-                        .font(DN.label(7))
-                        .tracking(1.2)
-                        .foregroundColor(DN.textDisabled)
+                statRow(title: "Network", symbol: "network") {
+                    networkLine(symbol: "arrow.down", label: "Down",
+                                value: fmtBytes(monitor.netDown) + "/s", tint: .green)
+                    Divider().background(Color.white.opacity(0.06))
+                    networkLine(symbol: "arrow.up", label: "Up",
+                                value: fmtBytes(monitor.netUp) + "/s", tint: .blue)
+                }
 
-                    Spacer()
+                HStack(spacing: 12) {
+                    statGauge(
+                        title: "Storage",
+                        value: monitor.diskPercent / 100,
+                        primary: "\(Int(monitor.diskPercent))%",
+                        secondary: "\(fmtGB(monitor.diskUsed))/\(fmtGB(monitor.diskTotal)) GB",
+                        symbol: "internaldrive.fill",
+                        tint: tintFor(monitor.diskPercent, warnAt: 75, dangerAt: 90)
+                    )
 
-                    ZStack {
-                        Circle()
-                            .stroke(Color.white.opacity(0.06), lineWidth: 3)
-                            .frame(width: 36, height: 36)
-                        Circle()
-                            .trim(from: 0, to: monitor.diskPercent / 100)
-                            .stroke(diskColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                            .frame(width: 36, height: 36)
-                            .rotationEffect(.degrees(-90))
-                        Text(String(format: "%.0f", monitor.diskPercent))
-                            .font(DN.mono(9, weight: .medium))
-                            .foregroundColor(DN.textPrimary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Uptime", systemImage: "clock")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Text(monitor.uptimeString)
+                            .font(.system(size: 22, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .monospacedDigit()
+                            .minimumScaleFactor(0.6)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
                     }
-                    .frame(maxWidth: .infinity)
-
-                    Spacer()
-
-                    Text("\(fmtGB(monitor.diskUsed))/\(fmtGB(monitor.diskTotal)) GB")
-                        .font(DN.mono(7))
-                        .foregroundColor(DN.textDisabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .glassCell(cornerRadius: 18)
                 }
-                .padding(DN.spaceSM)
-                .frame(maxHeight: .infinity)
-                .frame(width: 100)
-                .glassCell()
-            }
 
-            // Row 3: Proc (clickable) + Uptime
-            HStack(spacing: gap) {
-                Button(action: {
+                Button {
                     monitor.refreshProcesses()
                     withAnimation(DN.transition) {
                         viewModel.viewState = .processList
                     }
-                }) {
-                    HStack(spacing: DN.spaceSM) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("PROCESSES")
-                                .font(DN.label(7))
-                                .tracking(1.2)
-                                .foregroundColor(DN.textDisabled)
-                            Text("\(monitor.processCount)")
-                                .font(DN.display(22))
-                                .foregroundColor(DN.textDisplay)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "list.bullet.rectangle")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Processes")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Text("\(monitor.processCount) running")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        HStack(alignment: .bottom, spacing: 2) {
-                            ForEach(0..<min(5, monitor.processes.count), id: \.self) { i in
-                                let pct = min(monitor.processes[i].cpu / 20, 1)
-                                RoundedRectangle(cornerRadius: 1)
-                                    .fill(pct > 0.5 ? DN.warning : DN.textSecondary.opacity(0.5))
-                                    .frame(width: 4, height: max(4, CGFloat(pct) * 30))
-                            }
-                        }
-                        .frame(height: 30)
-
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(DN.textDisabled)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
                     }
-                    .padding(DN.spaceSM)
-                    .frame(maxHeight: .infinity)
-                    .glassCell()
+                    .padding(14)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(.rect)
+                    .glassCell(cornerRadius: 18)
                 }
                 .buttonStyle(.plain)
+            }
+            .padding(.top, 4)
+            .padding(.bottom, 14)
+        }
+        .scrollIndicators(.never)
+        .smartScrollFade(28)
+    }
 
-                VStack(spacing: DN.spaceXS) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 10))
-                        .foregroundColor(DN.textDisabled)
-                    Text(monitor.uptimeString)
-                        .font(DN.mono(12, weight: .medium))
-                        .foregroundColor(DN.textPrimary)
-                    Text("UPTIME")
-                        .font(DN.label(6))
-                        .tracking(1)
-                        .foregroundColor(DN.textDisabled)
-                }
-                .frame(maxHeight: .infinity)
-                .frame(width: 80)
-                .glassCell()
+    // MARK: - Tile builders
+
+    private func statGauge(
+        title: String,
+        value: Double,
+        primary: String,
+        secondary: String,
+        symbol: String,
+        tint: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(tint)
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.10), style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                Circle()
+                    .trim(from: 0, to: min(max(value, 0), 1))
+                    .stroke(tint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeOut(duration: 0.4), value: value)
+
+                Text(primary)
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+            }
+            .frame(width: 84, height: 84)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+
+            Text(secondary)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .glassCell(cornerRadius: 18)
+    }
+
+    private func statRow<Content: View>(
+        title: String,
+        symbol: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            VStack(spacing: 4) {
+                content()
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .glassCell(cornerRadius: 18)
     }
 
-    private func netRow(direction: String, label: String, value: String,
-                        color: Color, history: [Double]) -> some View {
-        HStack(spacing: DN.spaceXS) {
-            Text(direction)
-                .font(DN.mono(9, weight: .bold))
-                .foregroundColor(color)
-                .frame(width: 12)
-
+    private func networkLine(symbol: String, label: String, value: String, tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(tint)
+                .frame(width: 14)
             Text(label)
-                .font(DN.label(7))
-                .tracking(1)
-                .foregroundColor(DN.textDisabled)
-
-            SparklineGraph(
-                data: history,
-                maxValue: max(history.max() ?? 1, 1),
-                color: color
-            )
-            .frame(height: 16)
-
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white)
+            Spacer()
             Text(value)
-                .font(DN.mono(9, weight: .medium))
-                .foregroundColor(color)
-                .frame(width: 70, alignment: .trailing)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
         }
-        .padding(.horizontal, DN.spaceSM)
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
     }
 
-    private var cpuColor: Color {
-        if monitor.cpuUsage > 80 { return DN.accent }
-        if monitor.cpuUsage > 50 { return DN.warning }
-        return DN.success
-    }
-
-    private var ramColor: Color {
-        if monitor.ramPercent > 85 { return DN.accent }
-        if monitor.ramPercent > 60 { return DN.warning }
-        return DN.success
-    }
-
-    private var diskColor: Color {
-        if monitor.diskPercent > 90 { return DN.accent }
-        if monitor.diskPercent > 75 { return DN.warning }
-        return DN.textSecondary
+    private func tintFor(_ pct: Double, warnAt: Double, dangerAt: Double) -> Color {
+        if pct >= dangerAt { return .red }
+        if pct >= warnAt { return .yellow }
+        return .green
     }
 }
 
@@ -464,7 +474,10 @@ struct ProcessListPanel: View {
     @State private var selectedPid: Int32? = nil
     @State private var sortBy: SortField = .cpu
 
-    enum SortField { case cpu, mem, name }
+    enum SortField: String, CaseIterable, Identifiable {
+        case cpu = "CPU", mem = "Memory", name = "Name"
+        var id: String { rawValue }
+    }
 
     private var sortedProcesses: [ProcessInfo_] {
         switch sortBy {
@@ -475,140 +488,132 @@ struct ProcessListPanel: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header + column headers combined
-            HStack(spacing: DN.spaceSM) {
-                Button(action: {
-                    withAnimation(DN.transition) { viewModel.viewState = .stats }
-                }) {
-                    Text("<")
-                        .font(DN.mono(12, weight: .medium))
-                        .foregroundColor(DN.textSecondary)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                ForEach(SortField.allCases) { field in
+                    sortPill(field)
                 }
-                .buttonStyle(.plain)
-
-                Text("PROCESSES")
-                    .font(DN.label(9))
-                    .tracking(1.5)
-                    .foregroundColor(DN.textSecondary)
-
-                Text("\(monitor.processes.count)")
-                    .font(DN.mono(9))
-                    .foregroundColor(DN.textDisabled)
-
                 Spacer()
-
-                sortHeader("CPU", field: .cpu, width: 42)
-                sortHeader("MEM", field: .mem, width: 38)
-
-                Button(action: { monitor.refreshProcesses() }) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(DN.textDisabled)
-                }
-                .buttonStyle(.plain)
-                .frame(width: 20)
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 22)
+                    .glassEffect(.regular, in: .capsule)
+                    .contentShape(.capsule)
+                    .onTapGesture { monitor.refreshProcesses() }
             }
-            .padding(.horizontal, DN.spaceXS)
 
-            Rectangle().fill(DN.border).frame(height: 1)
-                .padding(.top, DN.spaceXS)
-
-            // Process list
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 0) {
-                    ForEach(sortedProcesses) { proc in
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(Array(sortedProcesses.enumerated()), id: \.element.id) { idx, proc in
                         processRow(proc)
+                        if idx < sortedProcesses.count - 1 {
+                            Divider().background(Color.white.opacity(0.05))
+                        }
                     }
                 }
+                .padding(8)
+                .frame(maxWidth: .infinity)
+                .contentCard(cornerRadius: 18)
+                .padding(.bottom, 14)
             }
+            .scrollIndicators(.never)
+            .smartScrollFade(28)
         }
         .onAppear { monitor.refreshProcesses() }
     }
 
-    private func sortHeader(_ title: String, field: SortField, width: CGFloat?) -> some View {
-        Button(action: {
-            withAnimation(.easeOut(duration: 0.15)) { sortBy = field }
-        }) {
-            HStack(spacing: 2) {
-                Text(title)
-                    .font(DN.label(7))
-                    .tracking(1)
-                    .foregroundColor(sortBy == field ? DN.textPrimary : DN.textDisabled)
-                if sortBy == field {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 5, weight: .bold))
-                        .foregroundColor(DN.textPrimary)
-                }
+    private func sortPill(_ field: SortField) -> some View {
+        let active = sortBy == field
+        return Text(field.rawValue)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .frame(height: 22)
+            .glassEffect(
+                active ? Glass.regular.tint(DN.activeAccent) : Glass.regular,
+                in: .capsule
+            )
+            .contentShape(.capsule)
+            .onTapGesture {
+                withAnimation(.easeOut(duration: 0.15)) { sortBy = field }
             }
-        }
-        .buttonStyle(.plain)
-        .frame(width: width, alignment: .trailing)
     }
 
     private func processRow(_ proc: ProcessInfo_) -> some View {
         let isSelected = selectedPid == proc.pid
-        let cpuHigh = proc.cpu > 50
+        let cpuTint = procTint(proc.cpu, warnAt: 25, dangerAt: 60)
+        return VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                ProcessIconView(path: proc.path)
+                    .frame(width: 22, height: 22)
 
-        return Button(action: {
-            withAnimation(.easeOut(duration: 0.15)) {
-                selectedPid = isSelected ? nil : proc.pid
-            }
-        }) {
-            VStack(spacing: 0) {
-                HStack(spacing: DN.spaceSM) {
-                    // App icon
-                    ProcessIconView(path: proc.path)
-                        .frame(width: 18, height: 18)
-
-                    // Name + PID
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(proc.name)
-                            .font(DN.body(11, weight: .medium))
-                            .foregroundColor(cpuHigh ? DN.warning : DN.textPrimary)
-                            .lineLimit(1)
-                        if isSelected {
-                            Text("PID \(proc.pid)")
-                                .font(DN.mono(8))
-                                .foregroundColor(DN.textDisabled)
-                        }
-                    }
-
-                    Spacer()
-
-                    // CPU
-                    Text(proc.cpu < 0.1 ? "0" : String(format: "%.1f", proc.cpu))
-                        .font(DN.mono(10, weight: proc.cpu > 10 ? .bold : .regular))
-                        .foregroundColor(cpuHigh ? DN.warning : DN.textSecondary)
-                        .frame(width: 42, alignment: .trailing)
-
-                    // Memory (MB)
-                    Text(proc.memMB < 1 ? "<1" : String(format: "%.0f", proc.memMB))
-                        .font(DN.mono(10))
-                        .foregroundColor(DN.textSecondary)
-                        .frame(width: 38, alignment: .trailing)
-
-                    // Force quit
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(proc.name)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
                     if isSelected {
-                        Button(action: { monitor.forceKillProcess(pid: proc.pid) }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(DN.accent)
-                        }
-                        .buttonStyle(.plain)
-                        .frame(width: 20)
-                    } else {
-                        Color.clear.frame(width: 20)
+                        Text("PID \(proc.pid)")
+                            .font(.system(size: 10, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
                     }
                 }
-                .padding(.horizontal, DN.spaceSM)
-                .padding(.vertical, isSelected ? 5 : 3)
-                .background(isSelected ? DN.surface : .clear)
+                Spacer(minLength: 8)
 
-                Rectangle().fill(DN.border.opacity(0.4)).frame(height: 0.5)
+                metric(value: String(format: "%.1f", proc.cpu), unit: "%",
+                       tint: proc.cpu > 25 ? cpuTint : .secondary)
+                    .frame(width: 56, alignment: .trailing)
+
+                metric(value: String(format: "%.0f", proc.memMB), unit: "MB",
+                       tint: .secondary)
+                    .frame(width: 60, alignment: .trailing)
+            }
+            .padding(.vertical, isSelected ? 8 : 6)
+            .padding(.horizontal, 10)
+            .contentShape(.rect)
+            .onTapGesture {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    selectedPid = isSelected ? nil : proc.pid
+                }
+            }
+
+            if isSelected {
+                HStack {
+                    Spacer()
+                    Text("Force Quit")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 22)
+                        .glassEffect(Glass.regular.tint(.red), in: .capsule)
+                        .contentShape(.capsule)
+                        .onTapGesture { monitor.forceKillProcess(pid: proc.pid) }
+                }
+                .padding(.bottom, 8)
+                .padding(.horizontal, 10)
+                .transition(.opacity)
             }
         }
-        .buttonStyle(.plain)
+    }
+
+    private func metric(value: String, unit: String, tint: Color) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 2) {
+            Text(value)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(tint)
+                .monospacedDigit()
+            Text(unit)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func procTint(_ pct: Double, warnAt: Double, dangerAt: Double) -> Color {
+        if pct >= dangerAt { return .red }
+        if pct >= warnAt { return .yellow }
+        return .green
     }
 }
 
@@ -622,23 +627,20 @@ private struct ProcessIconView: View {
             Image(nsImage: nsImage)
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 18, height: 18)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         } else {
-            RoundedRectangle(cornerRadius: 4)
-                .fill(DN.border)
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(Color.white.opacity(0.08))
                 .overlay(
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 9))
-                        .foregroundColor(DN.textDisabled)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
                 )
         }
     }
 
     private func resolveIcon() -> NSImage? {
         guard let path = path else { return nil }
-
-        // Try to find .app bundle by walking up from binary path
         let components = path.components(separatedBy: "/")
         for (i, comp) in components.enumerated() {
             if comp.hasSuffix(".app") {
@@ -647,245 +649,9 @@ private struct ProcessIconView: View {
                 if icon.size.width > 0 { return icon }
             }
         }
-
-        // Fallback: icon for the binary itself
         if FileManager.default.fileExists(atPath: path) {
             return NSWorkspace.shared.icon(forFile: path)
         }
-
         return nil
-    }
-}
-
-// MARK: - Arc Gauge Cell (segmented tick style)
-
-private struct ArcGaugeCell: View {
-    let label: String
-    let value: Double
-    let maxValue: Double
-    let displayValue: String
-    let unit: String
-    let color: Color
-    let history: [Double]?
-
-    @State private var pulse = false
-    private var fraction: Double { min(value / max(maxValue, 0.001), 1) }
-    private let totalTicks = 36
-
-    var body: some View {
-        ZStack {
-            // Background sparkline
-            if let history = history {
-                MiniSparkline(data: history, color: color)
-                    .opacity(0.15)
-            }
-
-            VStack(spacing: 0) {
-                HStack {
-                    Text(label)
-                        .font(DN.label(8))
-                        .tracking(1.5)
-                        .foregroundColor(DN.textDisabled)
-                    Spacer()
-                    // Live value badge
-                    Text(String(format: "%.1f", value))
-                        .font(DN.mono(8))
-                        .foregroundColor(color.opacity(pulse ? 1 : 0.5))
-                        .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: pulse)
-                }
-
-                Spacer()
-
-                // Segmented arc gauge
-                ZStack {
-                    SegmentedArc(totalTicks: totalTicks, filledTicks: Int(fraction * Double(totalTicks)),
-                                 activeColor: color, inactiveColor: Color.white.opacity(0.06))
-                        .frame(width: 60, height: 60)
-                        .animation(.easeOut(duration: 0.5), value: fraction)
-
-                    VStack(spacing: -1) {
-                        Text(displayValue)
-                            .font(DN.display(18))
-                            .foregroundColor(DN.textDisplay)
-                        Text(unit)
-                            .font(DN.label(6))
-                            .tracking(0.5)
-                            .foregroundColor(DN.textDisabled)
-                    }
-                }
-
-                Spacer()
-            }
-            .padding(DN.spaceSM)
-        }
-        .frame(maxHeight: .infinity)
-        .glassCell()
-        .onAppear { pulse = true }
-    }
-}
-
-// MARK: - Segmented Arc (tick marks)
-
-private struct SegmentedArc: View {
-    let totalTicks: Int
-    let filledTicks: Int
-    let activeColor: Color
-    let inactiveColor: Color
-
-    var body: some View {
-        GeometryReader { geo in
-            let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
-            let radius = min(geo.size.width, geo.size.height) / 2
-            let startDeg: Double = 135
-            let sweepDeg: Double = 270
-            let gap: Double = sweepDeg / Double(totalTicks)
-
-            ZStack {
-                ForEach(0..<totalTicks, id: \.self) { i in
-                    let angle = Angle(degrees: startDeg + Double(i) * gap)
-                    let innerR = radius - 6
-                    let outerR = radius
-                    let isFilled = i < filledTicks
-                    let isHot = isFilled && i >= filledTicks - 3 && filledTicks > 3
-
-                    Path { path in
-                        let cos = Darwin.cos(angle.radians)
-                        let sin = Darwin.sin(angle.radians)
-                        path.move(to: CGPoint(
-                            x: center.x + innerR * cos,
-                            y: center.y + innerR * sin
-                        ))
-                        path.addLine(to: CGPoint(
-                            x: center.x + outerR * cos,
-                            y: center.y + outerR * sin
-                        ))
-                    }
-                    .stroke(
-                        isFilled ? activeColor.opacity(isHot ? 1 : 0.7) : inactiveColor,
-                        style: StrokeStyle(lineWidth: 2, lineCap: .round)
-                    )
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Mini Sparkline (background fill)
-
-private struct MiniSparkline: View {
-    let data: [Double]
-    let color: Color
-
-    var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            guard data.count > 1 else { return AnyView(EmptyView()) }
-
-            let maxVal = max(data.max() ?? 1, 1)
-            let step = w / CGFloat(data.count - 1)
-            let points: [CGPoint] = data.enumerated().map { i, val in
-                CGPoint(x: CGFloat(i) * step,
-                        y: h - (CGFloat(min(val, maxVal) / maxVal) * h * 0.5))
-            }
-
-            return AnyView(
-                Path { path in
-                    path.move(to: CGPoint(x: 0, y: h))
-                    for pt in points { path.addLine(to: pt) }
-                    path.addLine(to: CGPoint(x: w, y: h))
-                    path.closeSubpath()
-                }
-                .fill(LinearGradient(
-                    colors: [color.opacity(0.1), color.opacity(0.01)],
-                    startPoint: .top, endPoint: .bottom
-                ))
-            )
-        }
-    }
-}
-
-// MARK: - Stepped Sparkline (retro oscilloscope style)
-
-private struct SparklineGraph: View {
-    let data: [Double]
-    let maxValue: Double
-    let color: Color
-
-    @State private var livePulse = false
-
-    var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            guard data.count > 1 else { return AnyView(EmptyView()) }
-
-            let step = w / CGFloat(data.count - 1)
-            let clampedMax = max(maxValue, 0.001)
-            let points: [CGPoint] = data.enumerated().map { i, val in
-                CGPoint(x: CGFloat(i) * step,
-                        y: h - (CGFloat(min(val, clampedMax) / clampedMax) * h))
-            }
-
-            return AnyView(
-                ZStack {
-                    // Horizontal grid lines (faint)
-                    ForEach(1..<4, id: \.self) { i in
-                        Path { path in
-                            let y = h * CGFloat(i) / 4
-                            path.move(to: CGPoint(x: 0, y: y))
-                            path.addLine(to: CGPoint(x: w, y: y))
-                        }
-                        .stroke(color.opacity(0.06), style: StrokeStyle(lineWidth: 0.5, dash: [2, 3]))
-                    }
-
-                    // Stepped fill (bar chart style)
-                    Path { path in
-                        path.move(to: CGPoint(x: 0, y: h))
-                        for (i, pt) in points.enumerated() {
-                            let barW = step
-                            let x = CGFloat(i) * step
-                            path.addLine(to: CGPoint(x: x, y: pt.y))
-                            path.addLine(to: CGPoint(x: x + barW, y: pt.y))
-                        }
-                        path.addLine(to: CGPoint(x: w, y: h))
-                        path.closeSubpath()
-                    }
-                    .fill(LinearGradient(
-                        colors: [color.opacity(0.18), color.opacity(0.03)],
-                        startPoint: .top, endPoint: .bottom
-                    ))
-
-                    // Stepped line (sharp edges, no smooth curves)
-                    Path { path in
-                        for (i, pt) in points.enumerated() {
-                            let x = CGFloat(i) * step
-                            if i == 0 {
-                                path.move(to: CGPoint(x: x, y: pt.y))
-                            } else {
-                                path.addLine(to: CGPoint(x: x, y: pt.y))
-                            }
-                            path.addLine(to: CGPoint(x: x + step, y: pt.y))
-                        }
-                    }
-                    .stroke(color.opacity(0.7), lineWidth: 1)
-
-                    // Glow on last point
-                    if let last = points.last {
-                        Circle()
-                            .fill(color)
-                            .frame(width: 4, height: 4)
-                            .position(last)
-                            .shadow(color: color.opacity(0.6), radius: 4)
-                        Circle()
-                            .fill(color.opacity(livePulse ? 0.3 : 0))
-                            .frame(width: 10, height: 10)
-                            .position(last)
-                            .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: livePulse)
-                    }
-                }
-                .onAppear { livePulse = true }
-            )
-        }
     }
 }

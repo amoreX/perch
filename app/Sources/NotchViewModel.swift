@@ -60,19 +60,10 @@ class NotchSettings: ObservableObject {
     // Display — pinned widgets
     @Published var pinnedWidgets: [PinnedWidget] { didSet { save() } }
     @Published var showBattery: Bool           { didSet { save() } }
-    @Published var showDotGrid: Bool           { didSet { save() } }
 
     // Agents
     @Published var showAgentLiveState: Bool    { didSet { save() } }
     @Published var compactAgentRows: Bool      { didSet { save() } }
-
-    // Dot grid
-    @Published var dotGridColor: String        { didSet { save() } }
-    @Published var dotGridOpacity: Double      { didSet { save() } }
-
-    var dotGridSwiftColor: Color {
-        Color(hex: UInt32(dotGridColor.dropFirst(), radix: 16) ?? 0xFFFFFF)
-    }
 
     // Computed from pinnedWidgets for backward compatibility
     var showMusic: Bool {
@@ -92,11 +83,8 @@ class NotchSettings: ObservableObject {
         keepOpenInChat = true
         pinnedWidgets = [.calendar, .music]
         showBattery = true
-        showDotGrid = true
         showAgentLiveState = true
         compactAgentRows = false
-        dotGridColor = "#FFFFFF"
-        dotGridOpacity = 0.6
         collapsedGroups = []
 
         // Then load from file
@@ -110,11 +98,8 @@ class NotchSettings: ObservableObject {
             "restoreLastView": restoreLastView,
             "pinnedWidgets": pinnedWidgets.map { $0.rawValue },
             "showBattery": showBattery,
-            "showDotGrid": showDotGrid,
             "showAgentLiveState": showAgentLiveState,
             "compactAgentRows": compactAgentRows,
-            "dotGridColor": dotGridColor,
-            "dotGridOpacity": dotGridOpacity,
             "collapsedGroups": Array(collapsedGroups),
         ]
         do {
@@ -147,11 +132,8 @@ class NotchSettings: ObservableObject {
             if !migrated.isEmpty { pinnedWidgets = migrated }
         }
         if let v = json["showBattery"] as? Bool { showBattery = v }
-        if let v = json["showDotGrid"] as? Bool { showDotGrid = v }
         if let v = json["showAgentLiveState"] as? Bool { showAgentLiveState = v }
         if let v = json["compactAgentRows"] as? Bool { compactAgentRows = v }
-        if let v = json["dotGridColor"] as? String { dotGridColor = v }
-        if let v = json["dotGridOpacity"] as? Double { dotGridOpacity = v }
         if let v = json["collapsedGroups"] as? [String] { collapsedGroups = Set(v) }
     }
 }
@@ -163,7 +145,7 @@ enum APIConfig {
 private enum CachedFormatters {
     static let time: DateFormatter = { let f = DateFormatter(); f.dateFormat = "h:mm"; return f }()
     static let period: DateFormatter = { let f = DateFormatter(); f.dateFormat = "a"; return f }()
-    static let date: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEEE, MMM d"; return f }()
+    static let date: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEE, MMM d"; return f }()
     static let shortDate: DateFormatter = { let f = DateFormatter(); f.dateFormat = "MMM d"; return f }()
     static let shortTime: DateFormatter = { let f = DateFormatter(); f.dateFormat = "h:mm a"; return f }()
 }
@@ -173,6 +155,7 @@ class NotchViewModel: ObservableObject {
     @Published var currentTime: Date = Date()
     @Published var viewState: NotchViewState = .overview
     @Published var isExpanded = false
+    @Published var isQuickPrompt = false
     @Published var shimmerStep: Int = 0
     @Published var shouldFocusChatInput = false
     @Published var isChatInputActive = false
@@ -278,18 +261,18 @@ class NotchViewModel: ObservableObject {
 
     func loadThreadHistory() {
         guard let auth = authManager else {
-            print("[Danotch] loadThreadHistory: no auth manager")
+            print("[Perch] loadThreadHistory: no auth manager")
             return
         }
         isLoadingHistory = true
-        print("[Danotch] loadThreadHistory: fetching...")
+        print("[Perch] loadThreadHistory: fetching...")
 
         // Refresh token if needed, then fetch
         Task {
             await auth.ensureValidToken()
             guard let token = auth.accessToken else {
                 await MainActor.run { self.isLoadingHistory = false }
-                print("[Danotch] loadThreadHistory: no token after refresh")
+                print("[Perch] loadThreadHistory: no token after refresh")
                 return
             }
             await self.fetchThreadHistory(token: token)
@@ -307,26 +290,26 @@ class NotchViewModel: ObservableObject {
                 self.isLoadingHistory = false
 
                 if let error {
-                    print("[Danotch] loadThreadHistory error: \(error.localizedDescription)")
+                    print("[Perch] loadThreadHistory error: \(error.localizedDescription)")
                     return
                 }
 
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard let data else {
-                    print("[Danotch] loadThreadHistory: no data, status=\(statusCode)")
+                    print("[Perch] loadThreadHistory: no data, status=\(statusCode)")
                     return
                 }
 
                 if statusCode != 200 {
                     let body = String(data: data, encoding: .utf8) ?? ""
-                    print("[Danotch] loadThreadHistory: status=\(statusCode) body=\(body)")
+                    print("[Perch] loadThreadHistory: status=\(statusCode) body=\(body)")
                     return
                 }
 
                 guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let threads = json["threads"] as? [[String: Any]] else {
                     let body = String(data: data, encoding: .utf8) ?? ""
-                    print("[Danotch] loadThreadHistory: parse failed, body=\(body)")
+                    print("[Perch] loadThreadHistory: parse failed, body=\(body)")
                     return
                 }
 
@@ -338,7 +321,7 @@ class NotchViewModel: ObservableObject {
                         updatedAt: t["updated_at"] as? String ?? ""
                     )
                 }
-                print("[Danotch] loadThreadHistory: loaded \(self.threadHistory.count) threads")
+                print("[Perch] loadThreadHistory: loaded \(self.threadHistory.count) threads")
             }
         }.resume()
     }
@@ -529,7 +512,7 @@ class NotchViewModel: ObservableObject {
             guard status == 200,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tasks = json["tasks"] as? [[String: Any]] else {
-                print("[Danotch] loadScheduledTasks: failed status=\(status)")
+                print("[Perch] loadScheduledTasks: failed status=\(status)")
                 return
             }
 
@@ -554,7 +537,7 @@ class NotchViewModel: ObservableObject {
 
             await MainActor.run {
                 self.scheduledTasks = parsed
-                print("[Danotch] loadScheduledTasks: \(parsed.count) tasks")
+                print("[Perch] loadScheduledTasks: \(parsed.count) tasks")
             }
         }
     }

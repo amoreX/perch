@@ -7,9 +7,9 @@ function getKey(): Buffer {
   const secret = process.env.PROVIDER_KEY_SECRET;
   if (!secret) {
     console.warn('[crypto] PROVIDER_KEY_SECRET not set — using weak dev fallback');
-    return scryptSync('danotch-dev-fallback', 'salt', 32);
+    return scryptSync('perch-dev-fallback', 'salt', 32);
   }
-  return scryptSync(secret, 'danotch-provider-keys', 32);
+  return scryptSync(secret, 'perch-provider-keys', 32);
 }
 
 export function encrypt(plaintext: string): string {

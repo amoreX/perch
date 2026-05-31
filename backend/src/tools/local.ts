@@ -132,7 +132,7 @@ async function webSearch(input: Record<string, unknown>): Promise<string> {
     const encoded = encodeURIComponent(query);
     const resp = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
       headers: {
-        'User-Agent': 'Danotch/1.0',
+        'User-Agent': 'Perch/1.0',
       },
     });
 
@@ -168,7 +168,7 @@ async function webFetch(input: Record<string, unknown>): Promise<string> {
 
   try {
     const resp = await fetch(url, {
-      headers: { 'User-Agent': 'Danotch/1.0' },
+      headers: { 'User-Agent': 'Perch/1.0' },
       signal: AbortSignal.timeout(15_000),
     });
 

@@ -226,6 +226,20 @@ enum NotchViewState: Equatable {
         default: return false
         }
     }
+
+    /// Stable key for SwiftUI `.id()` so a view-state change triggers a clean cross-fade
+    /// (insert/remove instead of in-place mutation).
+    var transitionKey: String {
+        switch self {
+        case .overview: return "overview"
+        case .taskList: return "taskList"
+        case .agentChat(let id): return "agentChat-\(id)"
+        case .stats: return "stats"
+        case .processList: return "processList"
+        case .settings: return "settings"
+        case .notifications: return "notifications"
+        }
+    }
 }
 
 // MARK: - Scheduled Tasks
@@ -293,9 +307,28 @@ struct ProviderConfig: Identifiable {
     var isVerified: Bool { verifiedAt != nil }
 
     static let defaultModels: [String: String] = [
-        "anthropic": "claude-sonnet-4-20250514",
+        "anthropic": "claude-sonnet-4-6",
         "openai": "gpt-5",
-        "openrouter": "anthropic/claude-sonnet-4-20250514",
+        "openrouter": "anthropic/claude-sonnet-4-6",
+    ]
+
+    /// (apiId, friendlyLabel) for each provider, newest first, capped at 3.
+    static let availableModels: [String: [(id: String, label: String)]] = [
+        "anthropic": [
+            ("claude-opus-4-7",   "Opus 4.7"),
+            ("claude-sonnet-4-6", "Sonnet 4.6"),
+            ("claude-haiku-4-5",  "Haiku 4.5"),
+        ],
+        "openai": [
+            ("gpt-5",      "GPT-5"),
+            ("gpt-5-mini", "GPT-5 mini"),
+            ("gpt-4o",     "GPT-4o"),
+        ],
+        "openrouter": [
+            ("anthropic/claude-opus-4-7",   "Opus 4.7"),
+            ("anthropic/claude-sonnet-4-6", "Sonnet 4.6"),
+            ("openai/gpt-5",                "GPT-5"),
+        ],
     ]
 }
 

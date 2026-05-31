@@ -123,7 +123,7 @@ async function createTask(input: Record<string, unknown>, userId: string): Promi
   const nextRunAt = computeNextRun(taskType, cron, intervalMs);
 
   const { data, error } = await supabase
-    .from('scheduled_tasks')
+    .from('danotch_scheduled_tasks')
     .insert({
       user_id: userId,
       name,
@@ -161,7 +161,7 @@ async function createTask(input: Record<string, unknown>, userId: string): Promi
 
 async function listTasks(userId: string): Promise<string> {
   const { data, error } = await supabase
-    .from('scheduled_tasks')
+    .from('danotch_scheduled_tasks')
     .select('id, name, prompt, task_type, cron, interval_ms, enabled, notify_user, last_run_at, next_run_at, run_count, last_result')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
@@ -190,7 +190,7 @@ async function updateTask(input: Record<string, unknown>, userId: string): Promi
 
   // Verify ownership
   const { data: existing } = await supabase
-    .from('scheduled_tasks')
+    .from('danotch_scheduled_tasks')
     .select('id, task_type')
     .eq('id', id)
     .eq('user_id', userId)
@@ -217,7 +217,7 @@ async function updateTask(input: Record<string, unknown>, userId: string): Promi
   }
 
   const { error } = await supabase
-    .from('scheduled_tasks')
+    .from('danotch_scheduled_tasks')
     .update(updates)
     .eq('id', id)
     .eq('user_id', userId);
@@ -233,7 +233,7 @@ async function deleteTask(input: Record<string, unknown>, userId: string): Promi
   const id = input.id as string;
 
   const { error } = await supabase
-    .from('scheduled_tasks')
+    .from('danotch_scheduled_tasks')
     .delete()
     .eq('id', id)
     .eq('user_id', userId);

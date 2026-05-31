@@ -26,7 +26,7 @@ async function tick(notch: NotchBridge) {
   try {
     // Fetch all due tasks
     const { data: dueTasks, error } = await supabase
-      .from('scheduled_tasks')
+      .from('danotch_scheduled_tasks')
       .select('*')
       .eq('enabled', true)
       .lte('next_run_at', new Date().toISOString());
@@ -43,7 +43,7 @@ async function tick(notch: NotchBridge) {
       // Immediately update next_run_at to prevent double-pickup on next tick
       const nextRun = computeNextRun(task.task_type, task.cron, task.interval_ms);
       await supabase
-        .from('scheduled_tasks')
+        .from('danotch_scheduled_tasks')
         .update({ next_run_at: nextRun.toISOString() })
         .eq('id', task.id);
 
@@ -66,7 +66,7 @@ async function executeTask(task: Record<string, unknown>, notch: NotchBridge) {
 
   // Re-fetch to check it still exists and is enabled
   const { data: fresh } = await supabase
-    .from('scheduled_tasks')
+    .from('danotch_scheduled_tasks')
     .select('id, enabled')
     .eq('id', taskId)
     .single();
@@ -90,7 +90,7 @@ async function executeTask(task: Record<string, unknown>, notch: NotchBridge) {
     providerName = `${provider.providerName}/${provider.modelId}`;
 
     // Build system prompt
-    let systemPrompt = `You are running a scheduled task inside Danotch. The user set this up to run automatically. Be concise and actionable. Task name: "${taskName}".`;
+    let systemPrompt = `You are running a scheduled task inside Perch. The user set this up to run automatically. Be concise and actionable. Task name: "${taskName}".`;
 
     // For conditional notify tasks, add [NOTIFY]/[SKIP] instruction
     let actualPrompt = prompt;
@@ -134,7 +134,7 @@ async function executeTask(task: Record<string, unknown>, notch: NotchBridge) {
 
   // Update task state
   await supabase
-    .from('scheduled_tasks')
+    .from('danotch_scheduled_tasks')
     .update({
       last_run_at: new Date().toISOString(),
       run_count: (task.run_count as number ?? 0) + 1,
@@ -160,7 +160,7 @@ async function executeTask(task: Record<string, unknown>, notch: NotchBridge) {
 
   // Create notification
   const { data: notifData } = await supabase
-    .from('notifications')
+    .from('danotch_notifications')
     .insert({
       user_id: userId,
       source: 'scheduled_task',

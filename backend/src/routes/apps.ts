@@ -37,7 +37,7 @@ function createSingleAppRoutes(appType: string, toolkitSlug: string, displayName
     // Fall back to DB if Composio doesn't report connected yet
     if (!status.connected) {
       const { data } = await supabase
-        .from('connected_apps')
+        .from('danotch_connected_apps')
         .select('active')
         .eq('user_id', userId)
         .eq('app_type', appType)
@@ -115,7 +115,7 @@ function createSingleAppRoutes(appType: string, toolkitSlug: string, displayName
 
     // Clear DB state for this app
     await supabase
-      .from('connected_apps')
+      .from('danotch_connected_apps')
       .update({ active: false, composio_conn_id: null, disconnected_at: new Date().toISOString() })
       .eq('user_id', userId)
       .eq('app_type', appType);
@@ -134,7 +134,7 @@ function createSingleAppRoutes(appType: string, toolkitSlug: string, displayName
     console.log(`${tag} Callback userId=${userId}, connectedAccountId=${connAccountId}`);
     if (userId) {
       await supabase
-        .from('connected_apps')
+        .from('danotch_connected_apps')
         .update({
           active: true,
           composio_conn_id: connAccountId ?? null,
@@ -152,7 +152,7 @@ function createSingleAppRoutes(appType: string, toolkitSlug: string, displayName
           <div style="text-align:center">
             <h1 style="font-size:48px;margin:0">✓</h1>
             <p style="color:#4A9E5C;font-size:18px;margin-top:12px">${displayName} connected successfully</p>
-            <p style="color:#666;font-size:14px;margin-top:8px">You can close this tab and return to Danotch</p>
+            <p style="color:#666;font-size:14px;margin-top:8px">You can close this tab and return to Perch</p>
           </div>
         </body>
       </html>

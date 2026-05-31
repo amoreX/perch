@@ -2,447 +2,339 @@ import SwiftUI
 
 struct NotchContentView: View {
     @ObservedObject var viewModel: NotchViewModel
-    @State private var chatInputText: String = ""
-    @FocusState private var isChatInputFocused: Bool
-
-    private var isExpanded: Bool {
-        viewModel.viewState != .overview
-    }
-
-    private var leftWidth: CGFloat {
-        isExpanded ? 0 : 185
-    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            leftColumn
-                .frame(width: leftWidth)
-                .opacity(isExpanded ? 0 : 1)
-                .clipped()
-
-            dividerBar
-                .opacity(isExpanded ? 0 : 1)
-                .scaleEffect(y: isExpanded ? 0.3 : 1)
-                .frame(width: isExpanded ? 0 : nil)
-                .clipped()
-
-            mainColumn
+        Group {
+            switch viewModel.viewState {
+            case .overview, .taskList:
+                TodayPage(viewModel: viewModel)
+            case .agentChat(let taskId):
+                AgentChatView(viewModel: viewModel, taskId: taskId)
+            case .stats, .processList, .settings, .notifications:
+                EmptyView()
+            }
         }
-        .animation(.easeOut(duration: DN.transitionDuration), value: isExpanded)
+    }
+}
+
+// MARK: - Today Page (single, non-scrolling)
+//
+// Three stacked pieces sized to fit the expanded notch height exactly:
+//   1. Clock card
+//   2. Music card (album art + scrub bar + transport, or "Nothing playing" empty state)
+//   3. Composer pill (chat input)
+
+private struct TodayPage: View {
+    @ObservedObject var viewModel: NotchViewModel
+    @State private var composerText: String = ""
+    @FocusState private var composerFocused: Bool
+
+    var body: some View {
+        VStack(spacing: 10) {
+            TodayClockCard(viewModel: viewModel)
+                .frame(maxHeight: .infinity)
+
+            TodayMusicCard(monitor: viewModel.nowPlaying)
+                .frame(maxHeight: .infinity)
+
+            TodayStatsRow(stats: viewModel.statsMonitor)
+                .frame(maxHeight: .infinity)
+
+            composer
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: viewModel.shouldFocusChatInput) { _, shouldFocus in
             if shouldFocus {
-                isChatInputFocused = true
+                composerFocused = true
                 viewModel.shouldFocusChatInput = false
             }
         }
-    }
-
-    // MARK: - Left Column
-
-    private var leftColumn: some View {
-        VStack(alignment: .leading, spacing: DN.spaceXS) {
-            // User greeting
-            if let name = viewModel.authManager?.userName, !name.isEmpty {
-                Text("Hi, \(name)")
-                    .font(DN.body(11, weight: .medium))
-                    .foregroundColor(DN.textDisabled)
-            }
-
-            // Time + date
-            HStack(alignment: .firstTextBaseline, spacing: DN.space2xs) {
-                Text(viewModel.timeString)
-                    .font(DN.display(32))
-                    .foregroundColor(DN.textDisplay)
-                    .tracking(-1)
-
-                Text(viewModel.periodString)
-                    .font(DN.label(9))
-                    .tracking(0.8)
-                    .foregroundColor(DN.textDisabled)
-            }
-
-            Text(viewModel.dateString.uppercased())
-                .font(DN.label(9))
-                .tracking(1.2)
-                .foregroundColor(DN.textSecondary)
-
-            Spacer().frame(height: DN.space2xs)
-
-            // Pinned widgets
-            ForEach(viewModel.settings.pinnedWidgets, id: \.self) { widget in
-                pinnedWidgetView(widget)
-            }
-
-            Spacer(minLength: 0)
+        .onChange(of: composerFocused) { _, focused in
+            viewModel.isChatInputActive = focused
         }
-        .padding(.trailing, DN.spaceSM)
-        .clipped()
     }
 
-    // MARK: - Pinned Widget Router
+    private var composer: some View {
+        HStack(spacing: 10) {
+            TextField("Ask Perch anything…", text: $composerText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .foregroundStyle(.white)
+                .focused($composerFocused)
+                .onSubmit { submit() }
 
-    @ViewBuilder
-    private func pinnedWidgetView(_ widget: PinnedWidget) -> some View {
-        switch widget {
-        case .calendar:
-            MiniCalendarView(compact: viewModel.settings.pinnedWidgets.count > 1)
-        case .music:
-            NowPlayingView(
-                monitor: viewModel.nowPlaying,
-                isBig: viewModel.settings.musicSize == .big,
-                accentColor: viewModel.settings.dotGridSwiftColor
+            sendButton
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .glassEffect(.regular, in: .capsule)
+        .contentShape(.capsule)
+        .onTapGesture { composerFocused = true }
+    }
+
+    private var sendButton: some View {
+        let enabled = !composerText.trimmingCharacters(in: .whitespaces).isEmpty
+        return Image(systemName: "arrow.up")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 24, height: 24)
+            .glassEffect(
+                enabled ? Glass.regular.tint(DN.activeAccent) : Glass.regular,
+                in: .circle
             )
-        case .ram:
-            PinnedRAMView(monitor: viewModel.statsMonitor)
-        case .disk:
-            PinnedDiskView(monitor: viewModel.statsMonitor)
-        case .network:
-            PinnedNetworkView(monitor: viewModel.statsMonitor)
-        case .uptime:
-            PinnedUptimeView(monitor: viewModel.statsMonitor)
-        case .processes:
-            PinnedProcessView(monitor: viewModel.statsMonitor)
-        }
+            .opacity(enabled ? 1 : 0.55)
+            .contentShape(.circle)
+            .onTapGesture { if enabled { submit() } }
     }
 
-    // MARK: - Divider
-
-    private var dividerBar: some View {
-        Rectangle()
-            .fill(DN.border)
-            .frame(width: 1)
-            .padding(.vertical, DN.spaceXS)
-            .padding(.horizontal, DN.spaceSM + DN.space2xs)
+    private func submit() {
+        let trimmed = composerText.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        composerText = ""
+        composerFocused = false
+        viewModel.sendChat(message: trimmed)
     }
+}
 
-    // MARK: - Main Column
+// MARK: - Today modules
 
-    @ViewBuilder
-    private var mainColumn: some View {
-        switch viewModel.viewState {
-        case .overview:
-            overviewRightColumn
-        case .taskList:
-            agentsColumn
-        case .agentChat(let taskId):
-            AgentChatView(viewModel: viewModel, taskId: taskId)
-        case .stats, .processList, .settings, .notifications:
-            EmptyView()
-        }
-    }
+private struct TodayClockCard: View {
+    @ObservedObject var viewModel: NotchViewModel
 
-    // MARK: - Overview right column
-
-    private var overviewRightColumn: some View {
-        VStack(alignment: .leading, spacing: DN.spaceSM) {
-            Text("AGENTS")
-                .font(DN.label(9))
-                .tracking(1.5)
-                .foregroundColor(DN.textSecondary)
-
-            if viewModel.agentMonitor.agents.isEmpty && activeTasks.isEmpty && viewModel.scheduledTasks.isEmpty {
-                emptyAgentState
-            } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: DN.spaceSM) {
-                        ForEach(viewModel.agentMonitor.groupedAgents) { group in
-                            AgentGroupView(group: group, isCompact: viewModel.settings.compactAgentRows, collapsedGroups: $viewModel.settings.collapsedGroups, showLiveState: viewModel.settings.showAgentLiveState) { agent in
-                                viewModel.agentMonitor.activateAgent(agent)
-                            }
-                        }
-
-                        // Scheduled tasks
-                        if !viewModel.scheduledTasks.isEmpty {
-                            ScheduledTasksSection(viewModel: viewModel)
-                        }
-
-                        // User tasks from chat
-                        if !activeTasks.isEmpty {
-                            tasksSection(compact: viewModel.settings.compactAgentRows)
-                        }
-                    }
-                }
-            }
-
-            Spacer(minLength: 0)
-            chatInputBar
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear {
-            viewModel.loadScheduledTasks()
-        }
-    }
-
-    // MARK: - Empty state
-
-    private var emptyAgentState: some View {
-        VStack(spacing: DN.spaceSM) {
-            Spacer().frame(height: DN.spaceSM)
-            Text("NO AGENTS DETECTED")
-                .font(DN.label(9))
-                .tracking(0.8)
-                .foregroundColor(DN.textDisabled)
-
-            Text("Start Claude Code, Cursor, or Codex\nto see them here")
-                .font(DN.body(10))
-                .foregroundColor(DN.textDisabled.opacity(0.7))
-                .multilineTextAlignment(.center)
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(viewModel.timeString)
+                .font(.system(size: 36, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+                .tracking(-1.2)
+            Text(viewModel.periodString)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
             Spacer()
+            Text(viewModel.dateString)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .glassCell(cornerRadius: 18)
     }
+}
 
-    // MARK: - Full agents column (conversations only)
+private struct TodayMusicCard: View {
+    @ObservedObject var monitor: NowPlayingMonitor
 
-    private var agentsColumn: some View {
-        VStack(alignment: .leading, spacing: DN.spaceSM) {
-            HStack(spacing: DN.spaceSM) {
-                Image(systemName: "bubble.left.and.text.bubble.right")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(DN.textSecondary)
-
-                Text("CONVERSATIONS")
-                    .font(DN.label(9))
-                    .tracking(1.5)
-                    .foregroundColor(DN.textSecondary)
-
-                Spacer()
-
-                HStack(spacing: DN.spaceXS) {
-                    IconActionButton(icon: "plus", label: "NEW") {
-                        withAnimation(DN.transition) {
-                            viewModel.viewState = .overview
-                            viewModel.shouldFocusChatInput = true
-                        }
-                    }
-                }
-            }
-
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: DN.spaceXS) {
-                    // Active / recent in-memory tasks
-                    ForEach(viewModel.tasks.filter { !$0.isFromHistory }) { task in
-                        AgentRow(
-                            task: task,
-                            isCompact: false,
-                            activityText: viewModel.activityText(for: task)
-                        ) {
-                            withAnimation(DN.transition) {
-                                viewModel.viewState = .agentChat(task.id)
-                            }
-                        }
-                    }
-
-                    // Past threads from DB
-                    if !viewModel.threadHistory.isEmpty {
-                        let loadedThreadIds = Set(viewModel.tasks.compactMap { $0.threadId })
-
-                        let unloaded = viewModel.threadHistory.filter { !loadedThreadIds.contains($0.id) }
-                        if !unloaded.isEmpty {
-                            Divider()
-                                .background(DN.border)
-                                .padding(.vertical, DN.spaceXS)
-
-                            Text("HISTORY")
-                                .font(DN.label(8))
-                                .tracking(1.2)
-                                .foregroundColor(DN.textDisabled)
-                                .padding(.leading, 4)
-
-                            ForEach(unloaded) { thread in
-                                threadRow(thread)
-                            }
-                        }
-                    }
-
-                    if activeTasks.isEmpty && viewModel.threadHistory.isEmpty {
-                        VStack(spacing: DN.spaceSM) {
-                            Spacer().frame(height: DN.spaceLG)
-                            Text("NO CONVERSATIONS")
-                                .font(DN.label(9))
-                                .tracking(0.8)
-                                .foregroundColor(DN.textDisabled)
-                            Text("Start a chat from the HOME tab")
-                                .font(DN.body(10))
-                                .foregroundColor(DN.textDisabled.opacity(0.7))
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                }
+    var body: some View {
+        Group {
+            if let track = monitor.track {
+                activeBody(track: track)
+            } else {
+                emptyBody
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear {
-            viewModel.loadThreadHistory()
-            viewModel.loadScheduledTasks()
-        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .glassCell(cornerRadius: 18)
+        .animation(.easeOut(duration: 0.22), value: monitor.track)
     }
 
-    // MARK: - Thread History Row
+    @ViewBuilder
+    private func activeBody(track: String) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            artwork(size: 56)
 
-    private func threadRow(_ thread: NotchViewModel.ThreadSummary) -> some View {
-        Button(action: {
-            viewModel.loadThread(thread.id)
-        }) {
-            HStack(spacing: DN.spaceSM) {
-                Image(systemName: "bubble.left")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(DN.textDisabled)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(thread.title ?? "Conversation")
-                        .font(DN.body(11))
-                        .foregroundColor(DN.textPrimary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(track)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                if let artist = monitor.artist {
+                    Text(artist)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
-
-                    Text(formatRelativeDate(thread.updatedAt, fallbackFormat: "MMM d"))
-                        .font(DN.mono(8))
-                        .foregroundColor(DN.textDisabled)
                 }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundColor(DN.textDisabled)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.08))
+                        Capsule()
+                            .fill(Color.white.opacity(0.85))
+                            .frame(width: max(2, geo.size.width * monitor.progress))
+                    }
+                }
+                .frame(height: 3)
+                .padding(.top, 4)
             }
-            .padding(.horizontal, DN.spaceSM)
-            .padding(.vertical, DN.spaceXS + 2)
-            .background(DN.surface.opacity(0.6))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(DN.border, lineWidth: 0.5)
-            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            transportControls
+        }
+    }
+
+    private var transportControls: some View {
+        HStack(spacing: 10) {
+            mediaButton("backward.fill", size: 12) { monitor.runCommand("previous track") }
+            mediaButton(monitor.isPlaying ? "pause.fill" : "play.fill", size: 16) { monitor.runCommand("playpause") }
+            mediaButton("forward.fill", size: 12) { monitor.runCommand("next track") }
+        }
+    }
+
+    private var emptyBody: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(0.05))
+                Image(systemName: "music.note")
+                    .font(.system(size: 20, weight: .light))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 56, height: 56)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Nothing playing")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text("Start a track in Apple Music or Spotify")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func artwork(size: CGFloat) -> some View {
+        ZStack {
+            if let img = monitor.artworkImage {
+                Image(nsImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(0.05))
+                Image(systemName: "music.note")
+                    .font(.system(size: size * 0.35, weight: .light))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func mediaButton(_ icon: String, size: CGFloat, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: size + 12, height: size + 12)
+                .contentShape(.circle)
         }
         .buttonStyle(.plain)
     }
+}
 
+// MARK: - Today stats row
 
-    // MARK: - Chat Input Bar
+private struct TodayStatsRow: View {
+    @ObservedObject var stats: SystemStatsMonitor
 
-    private var chatInputBar: some View {
-        HStack(spacing: DN.spaceSM) {
-            Image(systemName: "sparkle")
-                .font(.system(size: 9, weight: .medium))
-                .foregroundColor(isChatInputFocused ? DN.textSecondary : DN.textDisabled)
-
-            TextField("", text: $chatInputText, prompt: Text("Ask anything...")
-                .font(DN.body(11))
-                .foregroundColor(DN.textDisabled)
+    var body: some View {
+        HStack(spacing: 10) {
+            TodayStatTile(
+                icon: "cpu",
+                label: "CPU",
+                value: "\(Int(stats.cpuUsage))%",
+                progress: stats.cpuUsage / 100,
+                tint: tint(for: stats.cpuUsage)
             )
-            .textFieldStyle(.plain)
-            .font(DN.body(11))
-            .foregroundColor(DN.textPrimary)
-            .focused($isChatInputFocused)
-            .onChange(of: isChatInputFocused) { _, focused in
-                viewModel.isChatInputActive = focused
-            }
-            .onSubmit { submitChat() }
+            .frame(width: 96)
 
-            if !chatInputText.isEmpty {
-                Button(action: { submitChat() }) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(DN.black)
-                        .frame(width: 18, height: 18)
-                        .background(DN.textDisplay)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .transition(.scale.combined(with: .opacity))
-            }
+            TodayStatTile(
+                icon: "memorychip",
+                label: "RAM",
+                value: "\(Int(stats.ramPercent))%",
+                progress: stats.ramPercent / 100,
+                tint: tint(for: stats.ramPercent)
+            )
+            .frame(width: 96)
+
+            TodayInlineCalendarTile()
+                .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, DN.spaceSM + DN.spaceXS)
-        .padding(.vertical, DN.spaceXS + 2)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(DN.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isChatInputFocused ? DN.borderVisible : DN.border, lineWidth: 1)
-        )
-        .animation(.easeOut(duration: DN.microDuration), value: chatInputText.isEmpty)
-        .animation(.easeOut(duration: DN.microDuration), value: isChatInputFocused)
     }
 
-    private func submitChat() {
-        let text = chatInputText.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
-        chatInputText = ""
-        isChatInputFocused = false
-        viewModel.sendChat(message: text)
+    private func tint(for pct: Double) -> Color {
+        if pct > 85 { return .red }
+        if pct > 65 { return .yellow }
+        return .green
     }
+}
 
-    // MARK: - Tasks Section
+private struct TodayStatTile: View {
+    let icon: String
+    let label: String
+    let value: String
+    let progress: Double
+    let tint: Color
 
-    private var activeTasks: [SubagentTask] {
-        viewModel.tasks.filter { !$0.isFromHistory }
-    }
-
-    private var isTasksExpanded: Bool { !viewModel.settings.collapsedGroups.contains("tasks") }
-
-    private func tasksSection(compact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button(action: {
-                withAnimation(.easeOut(duration: DN.microDuration)) {
-                    viewModel.settings.collapsedGroups.toggle("tasks")
-                }
-            }) {
-                HStack(spacing: DN.spaceSM) {
-                    Image(systemName: "bubble.left.and.text.bubble.right")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(DN.textSecondary)
-                        .frame(width: 14)
-
-                    Text("TASKS")
-                        .font(DN.label(9))
-                        .tracking(1.0)
-                        .foregroundColor(DN.textSecondary)
-
-                    Text("\(activeTasks.count)")
-                        .font(DN.mono(9, weight: .medium))
-                        .foregroundColor(DN.textDisabled)
-
-                    Spacer()
-
-                    ActiveBadge(count: activeTasks.filter { $0.isActive }.count)
-
-                    Image(systemName: isTasksExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundColor(DN.textDisabled)
-                }
-                .padding(.horizontal, DN.spaceSM)
-                .padding(.vertical, DN.spaceXS + 1)
-                .contentShape(Rectangle())
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(label)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(0.5)
             }
-            .buttonStyle(.plain)
-
-            if isTasksExpanded {
-                VStack(spacing: 1) {
-                    ForEach(activeTasks) { task in
-                        AgentRow(
-                            task: task,
-                            isCompact: compact,
-                            activityText: viewModel.activityText(for: task)
-                        ) {
-                            withAnimation(DN.transition) {
-                                viewModel.viewState = .agentChat(task.id)
-                            }
-                        }
-                    }
+            Text(value)
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+            Spacer(minLength: 0)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule()
+                        .fill(tint.opacity(0.9))
+                        .frame(width: max(2, geo.size.width * max(0, min(1, progress))))
                 }
             }
+            .frame(height: 4)
         }
-        .background(DN.surface.opacity(0.4))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(DN.border, lineWidth: 1)
-        )
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .glassCell(cornerRadius: 16)
     }
+}
 
+/// Calendar tile sized to occupy two slots in the stats row. Shows the
+/// month/year header on top and a horizontal day strip that auto-scrolls
+/// today into view.
+private struct TodayInlineCalendarTile: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("CALENDAR")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(0.5)
+            }
+            MiniCalendarView(compact: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .glassCell(cornerRadius: 16)
+    }
 }
 
 // MARK: - Icon Action Button (icon only, label on hover)
@@ -452,32 +344,15 @@ struct IconActionButton: View {
     let label: String
     let action: () -> Void
 
-    @State private var isHovering = false
-
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 3) {
-                Image(systemName: icon)
-                    .font(.system(size: 9, weight: .bold))
-
-                if isHovering {
-                    Text(label)
-                        .font(DN.label(7))
-                        .tracking(0.6)
-                        .transition(.opacity.combined(with: .move(edge: .trailing)))
-                }
-            }
-            .foregroundColor(isHovering ? DN.textPrimary : DN.textDisabled)
-            .padding(.horizontal, isHovering ? DN.spaceSM : DN.spaceSM)
-            .padding(.vertical, DN.spaceXS + 1)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(isHovering ? DN.borderVisible : DN.border, lineWidth: 1)
-            )
-            .animation(.easeOut(duration: DN.microDuration), value: isHovering)
+            Image(systemName: icon)
+                .symbolRenderingMode(.hierarchical)
         }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
+        .buttonStyle(.glass)
+        .controlSize(.small)
+        .tint(.clear)
+        .help(label)
     }
 }
 
@@ -498,25 +373,24 @@ struct AgentGroupView: View {
             // Group header — tappable to toggle if multiple agents
             Button(action: {
                 guard canCollapse else { return }
-                withAnimation(.easeOut(duration: DN.microDuration)) {
+                withAnimation(DN.transition) {
                     collapsedGroups.toggle(group.id)
                 }
             }) {
                 HStack(spacing: DN.spaceSM) {
                     Image(systemName: group.type.icon)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(group.type.brandColor)
                         .frame(width: 14)
 
-                    Text(group.type.rawValue.uppercased())
-                        .font(DN.label(9))
-                        .tracking(1.0)
+                    Text(group.type.rawValue)
+                        .font(DN.body(11, weight: .semibold))
                         .foregroundColor(group.type.brandColor)
 
                     if group.agents.count > 1 {
                         Text("\(group.agents.count)")
-                            .font(DN.mono(9, weight: .medium))
-                            .foregroundColor(group.type.brandColor.opacity(0.6))
+                            .font(DN.mono(10, weight: .medium))
+                            .foregroundColor(group.type.brandColor.opacity(0.7))
                     }
 
                     Spacer()
@@ -525,13 +399,13 @@ struct AgentGroupView: View {
 
                     if canCollapse {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 9, weight: .semibold))
                             .foregroundColor(DN.textDisabled)
                             .rotationEffect(.degrees(isGroupExpanded ? 90 : 0))
                     }
                 }
-                .padding(.horizontal, DN.spaceSM)
-                .padding(.vertical, DN.spaceXS + 1)
+                .padding(.horizontal, DN.spaceMD)
+                .padding(.vertical, DN.spaceSM)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -548,12 +422,7 @@ struct AgentGroupView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(DN.surface.opacity(0.4))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(DN.border, lineWidth: 1)
-        )
+        .contentCard(cornerRadius: DN.radiusMD)
     }
 }
 
@@ -571,9 +440,9 @@ struct AgentSessionRow: View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: DN.spaceSM) {
-                    // Project name or display name
+                    // Project name — primary identifier
                     Text(agent.displayName)
-                        .font(DN.body(11, weight: .medium))
+                        .font(DN.body(12, weight: .semibold))
                         .foregroundColor(DN.textPrimary)
                         .lineLimit(1)
 
@@ -581,7 +450,7 @@ struct AgentSessionRow: View {
 
                     // Elapsed
                     Text(agent.elapsed)
-                        .font(DN.mono(9))
+                        .font(DN.mono(10))
                         .foregroundColor(DN.textDisabled)
                 }
 
@@ -602,37 +471,40 @@ struct AgentSessionRow: View {
                 // Resource usage on hover or expanded
                 if isHovering || !isCompact {
                     HStack(spacing: DN.spaceSM) {
-                        HStack(spacing: 2) {
+                        HStack(spacing: 3) {
                             Text("CPU")
-                                .font(DN.label(7))
-                                .tracking(0.4)
+                                .font(DN.label(9))
+                                .tracking(0.5)
                                 .foregroundColor(DN.textDisabled)
                             Text(String(format: "%.1f%%", agent.cpu))
-                                .font(DN.mono(9))
+                                .font(DN.mono(10))
                                 .foregroundColor(agent.cpu > 1.0 ? DN.warning : DN.textSecondary)
                         }
 
-                        HStack(spacing: 2) {
+                        HStack(spacing: 3) {
                             Text("MEM")
-                                .font(DN.label(7))
-                                .tracking(0.4)
+                                .font(DN.label(9))
+                                .tracking(0.5)
                                 .foregroundColor(DN.textDisabled)
                             Text(String(format: "%.0fMB", agent.memMB))
-                                .font(DN.mono(9))
+                                .font(DN.mono(10))
                                 .foregroundColor(DN.textSecondary)
                         }
 
                         Spacer()
                     }
-                    .padding(.top, 1)
+                    .padding(.top, 2)
                     .transition(.opacity)
                 }
             }
             .padding(.horizontal, DN.spaceSM)
             .padding(.vertical, DN.spaceXS + 2)
             .contentShape(Rectangle())
-            .background(isHovering ? DN.surface : .clear)
-            .animation(.easeOut(duration: DN.microDuration), value: isHovering)
+            .background(
+                RoundedRectangle(cornerRadius: DN.radiusSM, style: .continuous)
+                    .fill(isHovering ? Color.white.opacity(0.06) : Color.clear)
+            )
+            .animation(DN.transition, value: isHovering)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -727,13 +599,11 @@ struct AgentRow: View {
             .padding(.horizontal, DN.spaceSM)
             .padding(.vertical, isCompact ? 6 : 8)
             .contentShape(Rectangle())
-            .background(isHovering ? DN.surface : (isCompact ? .clear : DN.surface.opacity(0.6)))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(!isCompact ? DN.border : .clear, lineWidth: 1)
+            .background(
+                RoundedRectangle(cornerRadius: DN.radiusSM, style: .continuous)
+                    .fill(isHovering ? Color.white.opacity(0.06) : Color.clear)
             )
-            .animation(.easeOut(duration: DN.microDuration), value: isHovering)
+            .animation(DN.transition, value: isHovering)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -785,6 +655,25 @@ struct ActivityText: View {
 
 // MARK: - Now Playing
 
+enum MusicSource: String {
+    case appleMusic
+    case spotify
+
+    var appName: String {
+        switch self {
+        case .appleMusic: return "Music"
+        case .spotify:    return "Spotify"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .appleMusic: return "Apple Music"
+        case .spotify:    return "Spotify"
+        }
+    }
+}
+
 class NowPlayingMonitor: ObservableObject {
     @Published var track: String?
     @Published var artist: String?
@@ -792,10 +681,11 @@ class NowPlayingMonitor: ObservableObject {
     @Published var artworkImage: NSImage?
     @Published var position: Double = 0
     @Published var duration: Double = 0
+    @Published var source: MusicSource?
 
     private var timer: Timer?
-    private var lastTrack: String?
-    private static let artPath = "/tmp/danotch_art.png"
+    private var lastTrackKey: String?
+    private static let artPath = "/tmp/perch_art.png"
 
     var progress: Double { duration > 0 ? position / duration : 0 }
 
@@ -814,12 +704,16 @@ class NowPlayingMonitor: ObservableObject {
 
     deinit { timer?.invalidate() }
 
+    /// Send a transport command to the currently-active source. We resolve the
+    /// app at call time rather than at construction so switching from Apple
+    /// Music to Spotify (or vice versa) works without re-instantiating.
     func runCommand(_ cmd: String) {
+        guard let src = source else { return }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let script = """
             try
-                if application "Music" is running then
-                    tell application "Music" to \(cmd)
+                if application "\(src.appName)" is running then
+                    tell application "\(src.appName)" to \(cmd)
                 end if
             end try
             """
@@ -837,34 +731,70 @@ class NowPlayingMonitor: ObservableObject {
 
     func poll() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Self.fetch()
-            let trackChanged = result.track != self?.lastTrack
+            // Query both apps; pick whichever is actively playing. If neither
+            // is playing we fall back to whichever has a track loaded (paused).
+            let music = Self.fetch(.appleMusic)
+            let spotify = Self.fetch(.spotify)
+            let chosen = Self.pick(music: music, spotify: spotify)
+
+            let trackKey = chosen.result.track.map { "\(chosen.source?.rawValue ?? "_")|\($0)" }
+            let trackChanged = trackKey != self?.lastTrackKey
             var artwork: NSImage? = self?.artworkImage
 
-            if trackChanged, result.track != nil {
-                Self.fetchArtwork()
-                artwork = NSImage(contentsOfFile: Self.artPath)
+            if trackChanged, let src = chosen.source, chosen.result.track != nil {
+                artwork = Self.fetchArtwork(for: src, artworkURL: chosen.result.artworkURL)
             }
-            if result.track == nil { artwork = nil }
+            if chosen.result.track == nil { artwork = nil }
 
             DispatchQueue.main.async {
-                self?.track = result.track
-                self?.artist = result.artist
-                self?.isPlaying = result.playing
-                self?.position = result.position
-                self?.duration = result.duration
-                self?.lastTrack = result.track
+                self?.source = chosen.source
+                self?.track = chosen.result.track
+                self?.artist = chosen.result.artist
+                self?.isPlaying = chosen.result.playing
+                self?.position = chosen.result.position
+                self?.duration = chosen.result.duration
+                self?.lastTrackKey = trackKey
                 if trackChanged { self?.artworkImage = artwork }
             }
         }
     }
 
-    private struct FetchResult {
-        let track: String?; let artist: String?; let playing: Bool
-        let position: Double; let duration: Double
+    // MARK: - Source resolution
+
+    private static func pick(
+        music: FetchResult,
+        spotify: FetchResult
+    ) -> (source: MusicSource?, result: FetchResult) {
+        // Prefer whichever app is currently playing.
+        if music.playing { return (.appleMusic, music) }
+        if spotify.playing { return (.spotify, spotify) }
+        // Neither is playing — surface whichever has a paused track.
+        if music.track != nil { return (.appleMusic, music) }
+        if spotify.track != nil { return (.spotify, spotify) }
+        return (nil, FetchResult.empty)
     }
 
-    private static func fetch() -> FetchResult {
+    // MARK: - Per-app fetch
+
+    private struct FetchResult {
+        let track: String?
+        let artist: String?
+        let playing: Bool
+        let position: Double
+        let duration: Double
+        let artworkURL: String?
+
+        static let empty = FetchResult(track: nil, artist: nil, playing: false, position: 0, duration: 0, artworkURL: nil)
+    }
+
+    private static func fetch(_ source: MusicSource) -> FetchResult {
+        switch source {
+        case .appleMusic: return fetchAppleMusic()
+        case .spotify:    return fetchSpotify()
+        }
+    }
+
+    private static func fetchAppleMusic() -> FetchResult {
         let script = """
         try
             if application "Music" is running then
@@ -883,48 +813,112 @@ class NowPlayingMonitor: ObservableObject {
         end try
         return ""
         """
+        return parseTriplePipe(runOsa(script))
+    }
+
+    /// Spotify exposes the same dictionary verbs as iTunes/Music, plus an
+    /// `artwork url` of the album artwork on Spotify's CDN — much faster to
+    /// fetch via HTTP than to round-trip `raw data of artwork` through
+    /// osascript. Spotify reports `duration` in MILLISECONDS, so we
+    /// normalise to seconds here.
+    private static func fetchSpotify() -> FetchResult {
+        let script = """
+        try
+            if application "Spotify" is running then
+                tell application "Spotify"
+                    if player state is playing or player state is paused then
+                        set t to name of current track
+                        set a to artist of current track
+                        set p to player position
+                        set d to duration of current track
+                        set u to ""
+                        try
+                            set u to artwork url of current track
+                        end try
+                        set s to "paused"
+                        if player state is playing then set s to "playing"
+                        return t & "|||" & a & "|||" & s & "|||" & (round p) & "|||" & d & "|||" & u
+                    end if
+                end tell
+            end if
+        end try
+        return ""
+        """
+        let out = runOsa(script)
+        let parts = out.components(separatedBy: "|||")
+        guard parts.count >= 5, !parts[0].isEmpty else { return .empty }
+        let durationMs = Double(parts[4]) ?? 0
+        return FetchResult(
+            track: parts[0],
+            artist: parts[1],
+            playing: parts[2] == "playing",
+            position: Double(parts[3]) ?? 0,
+            duration: durationMs / 1000.0,
+            artworkURL: parts.count > 5 ? parts[5] : nil
+        )
+    }
+
+    private static func parseTriplePipe(_ raw: String) -> FetchResult {
+        let parts = raw.components(separatedBy: "|||")
+        guard parts.count >= 5, !parts[0].isEmpty else { return .empty }
+        return FetchResult(
+            track: parts[0],
+            artist: parts[1],
+            playing: parts[2] == "playing",
+            position: Double(parts[3]) ?? 0,
+            duration: Double(parts[4]) ?? 0,
+            artworkURL: parts.count > 5 ? parts[5] : nil
+        )
+    }
+
+    private static func runOsa(_ script: String) -> String {
         let pipe = Pipe()
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         proc.arguments = ["-e", script]
         proc.standardOutput = pipe
         proc.standardError = FileHandle.nullDevice
-        do { try proc.run() } catch { return FetchResult(track: nil, artist: nil, playing: false, position: 0, duration: 0) }
+        do { try proc.run() } catch { return "" }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         proc.waitUntilExit()
-        guard let out = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !out.isEmpty else { return FetchResult(track: nil, artist: nil, playing: false, position: 0, duration: 0) }
-        let p = out.components(separatedBy: "|||")
-        return FetchResult(
-            track: p.count > 0 ? p[0] : nil,
-            artist: p.count > 1 ? p[1] : nil,
-            playing: p.count > 2 && p[2] == "playing",
-            position: p.count > 3 ? Double(p[3]) ?? 0 : 0,
-            duration: p.count > 4 ? Double(p[4]) ?? 0 : 0
-        )
+        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    private static func fetchArtwork() {
-        let script = """
-        try
-            if application "Music" is running then
-                tell application "Music"
-                    set artData to raw data of artwork 1 of current track
-                    set f to open for access POSIX file "\(artPath)" with write permission
-                    set eof of f to 0
-                    write artData to f
-                    close access f
-                end tell
-            end if
-        end try
-        """
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        proc.arguments = ["-e", script]
-        proc.standardOutput = FileHandle.nullDevice
-        proc.standardError = FileHandle.nullDevice
-        try? proc.run()
-        proc.waitUntilExit()
+    // MARK: - Artwork
+
+    private static func fetchArtwork(for source: MusicSource, artworkURL: String?) -> NSImage? {
+        switch source {
+        case .appleMusic:
+            // Apple Music: export `raw data of artwork 1` to a tmp file, then load it.
+            let script = """
+            try
+                if application "Music" is running then
+                    tell application "Music"
+                        set artData to raw data of artwork 1 of current track
+                        set f to open for access POSIX file "\(artPath)" with write permission
+                        set eof of f to 0
+                        write artData to f
+                        close access f
+                    end tell
+                end if
+            end try
+            """
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            proc.arguments = ["-e", script]
+            proc.standardOutput = FileHandle.nullDevice
+            proc.standardError = FileHandle.nullDevice
+            try? proc.run()
+            proc.waitUntilExit()
+            return NSImage(contentsOfFile: artPath)
+        case .spotify:
+            // Spotify: artwork is hosted on i.scdn.co — fetch over HTTP.
+            guard let urlStr = artworkURL,
+                  !urlStr.isEmpty,
+                  let url = URL(string: urlStr),
+                  let data = try? Data(contentsOf: url) else { return nil }
+            return NSImage(data: data)
+        }
     }
 }
 
@@ -1077,53 +1071,49 @@ struct ScheduledTasksSection: View {
     private var isExpanded: Bool { !viewModel.settings.collapsedGroups.contains("scheduled") }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: 0) {
             // Header
             Button(action: {
-                withAnimation(.easeOut(duration: DN.microDuration)) {
+                withAnimation(DN.transition) {
                     viewModel.settings.collapsedGroups.toggle("scheduled")
                 }
             }) {
                 HStack(spacing: DN.spaceSM) {
                     Image(systemName: "clock.arrow.2.circlepath")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(DN.warning)
+                        .frame(width: 14)
 
-                    Text("SCHEDULED")
-                        .font(DN.label(8))
-                        .tracking(1.2)
+                    Text("Scheduled")
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(DN.textSecondary)
 
                     Text("\(viewModel.scheduledTasks.filter { $0.enabled }.count)")
-                        .font(DN.mono(8))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(DN.textDisabled)
 
                     Spacer()
 
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(DN.textDisabled)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
-                .padding(.horizontal, DN.spaceSM)
-                .padding(.vertical, DN.spaceXS)
+                .padding(.horizontal, DN.spaceMD)
+                .padding(.vertical, DN.spaceSM)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             if isExpanded {
-                VStack(spacing: 1) {
+                VStack(spacing: 0) {
                     ForEach(viewModel.scheduledTasks) { task in
                         ScheduledTaskRow(task: task, viewModel: viewModel)
                     }
                 }
             }
         }
-        .background(DN.surface.opacity(0.4))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(DN.border, lineWidth: 0.5)
-        )
+        .contentCard(cornerRadius: DN.radiusMD)
     }
 }
 
@@ -1189,7 +1179,7 @@ struct ScheduledTaskRow: View {
                     .buttonStyle(.plain)
 
                     Button(action: {
-                        withAnimation(.easeOut(duration: DN.microDuration)) {
+                        withAnimation(DN.transition) {
                             viewModel.deleteScheduledTask(task.id)
                         }
                     }) {
@@ -1205,7 +1195,7 @@ struct ScheduledTaskRow: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 if task.lastResultSummary != nil {
-                    withAnimation(.easeOut(duration: DN.microDuration)) {
+                    withAnimation(DN.transition) {
                         isExpanded.toggle()
                     }
                 }
@@ -1213,24 +1203,29 @@ struct ScheduledTaskRow: View {
 
             // Expanded: show last result
             if isExpanded, let summary = task.lastResultSummary {
-                VStack(alignment: .leading, spacing: DN.spaceXS) {
-                    Divider().background(DN.border)
+                VStack(alignment: .leading, spacing: 6) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.06))
+                        .frame(height: 0.5)
 
                     Text("LAST OUTPUT")
-                        .font(DN.label(7))
-                        .tracking(1)
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(0.6)
                         .foregroundColor(DN.textDisabled)
 
                     MarkdownView(text: summary, isFinal: true)
                         .lineLimit(10)
                 }
-                .padding(.horizontal, DN.spaceSM)
-                .padding(.bottom, DN.spaceXS + 1)
+                .padding(.horizontal, DN.spaceMD)
+                .padding(.vertical, 6)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(isHovering || isExpanded ? DN.surface : .clear)
-        .animation(.easeOut(duration: DN.microDuration), value: isHovering)
+        .background(
+            Rectangle()
+                .fill(Color.white.opacity(isHovering || isExpanded ? 0.05 : 0.0))
+        )
+        .animation(DN.transition, value: isHovering)
         .onHover { isHovering = $0 }
     }
 }
@@ -1276,31 +1271,29 @@ struct MiniCalendarView: View {
     }
 
     private var compactCalendar: some View {
-        VStack(spacing: 3) {
-            Text(monthName)
-                .font(DN.label(7))
-                .tracking(1.2)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(monthName.capitalized)
+                .font(DN.body(10, weight: .medium))
                 .foregroundColor(DN.textDisabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 ScrollViewReader { proxy in
-                    HStack(spacing: 1) {
+                    HStack(spacing: 2) {
                         ForEach(1...daysInMonth, id: \.self) { day in
                             VStack(spacing: 2) {
                                 Text(dayOfWeekLabel(day))
-                                    .font(DN.label(5))
-                                    .tracking(0.5)
-                                    .foregroundColor(day == currentDay ? DN.black : DN.textDisabled)
+                                    .font(.system(size: 7, weight: .medium))
+                                    .foregroundColor(day == currentDay ? DN.textPrimary : DN.textDisabled.opacity(0.6))
                                 Text("\(day)")
-                                    .font(DN.mono(8, weight: day == currentDay ? .bold : .regular))
+                                    .font(.system(size: 10, weight: day == currentDay ? .semibold : .regular, design: .rounded))
                                     .foregroundColor(dayColor(day))
+                                    .monospacedDigit()
                             }
-                            .frame(width: 18, height: 24)
+                            .frame(width: 20, height: 26)
                             .background {
                                 if day == currentDay {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(DN.textDisplay)
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(Color.white.opacity(0.10))
                                 }
                             }
                             .id(day)
@@ -1374,16 +1367,11 @@ struct MiniCalendarView: View {
             }
         }
         .padding(DN.spaceSM)
-        .background(DN.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(DN.border, lineWidth: 1)
-        )
+        .contentCard(cornerRadius: DN.radiusMD)
     }
 
     private func dayColor(_ day: Int) -> Color {
-        if day == currentDay { return DN.black }
+        if day == currentDay { return DN.textDisplay }
         if day < currentDay { return DN.textDisabled }
         return DN.textPrimary
     }

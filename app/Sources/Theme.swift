@@ -15,10 +15,15 @@ enum DN {
     static let textPrimary     = Color(hex: 0xE8E8E8)
     static let textDisplay     = Color.white
 
-    static let accent          = Color(hex: 0xD71921)  // Signal red — one per screen
-    static let accentSubtle    = Color(hex: 0xD71921).opacity(0.15)
+    static let accent          = Color(hex: 0x8B7CF6)  // Soft purple
+    static let accentSubtle    = Color(hex: 0x8B7CF6).opacity(0.15)
     static let success         = Color(hex: 0x4A9E5C)
     static let warning         = Color(hex: 0xD4A843)
+
+    // Dim purple tint for active glass buttons. Deliberately dim so
+    // SwiftUI's glass style does NOT auto-invert the foreground to
+    // black; the white label stays white against this surface.
+    static let activeAccent    = Color(hex: 0x3D3270)
 
     // Agent brand colors
     static let claudeOrange    = Color(hex: 0xD97757)
@@ -45,14 +50,22 @@ enum DN {
         .system(size: size, weight: weight, design: .monospaced)
     }
 
-    // MARK: Spacing (8px base)
+    // MARK: Spacing (4px base scale)
 
     static let space2xs: CGFloat = 2
     static let spaceXS:  CGFloat = 4
     static let spaceSM:  CGFloat = 8
-    static let spaceMD:  CGFloat = 16
-    static let spaceLG:  CGFloat = 24
+    static let spaceMD:  CGFloat = 12
+    static let spaceLG:  CGFloat = 20
     static let spaceXL:  CGFloat = 32
+
+    // MARK: Corner radius scale (single source of truth)
+
+    static let radiusXS: CGFloat = 6   // tiny inline pills
+    static let radiusSM: CGFloat = 8   // row hovers, small chips
+    static let radiusMD: CGFloat = 12  // cards, inputs
+    static let radiusLG: CGFloat = 16  // major panels
+    static let radiusXL: CGFloat = 20  // shell-level surfaces
 
     // MARK: Motion
 
@@ -64,7 +77,24 @@ enum DN {
     }
 
     static var transition: Animation {
-        .easeOut(duration: transitionDuration)
+        .spring(response: 0.38, dampingFraction: 0.82, blendDuration: 0.15)
+    }
+
+    // Tahoe-style spring animations
+    static var expandSpring: Animation {
+        .spring(response: 0.28, dampingFraction: 0.74, blendDuration: 0.1)
+    }
+
+    static var collapseSpring: Animation {
+        .spring(response: 0.26, dampingFraction: 0.88, blendDuration: 0.1)
+    }
+
+    static var peekSpring: Animation {
+        .spring(response: 0.5, dampingFraction: 0.78, blendDuration: 0.15)
+    }
+
+    static var viewStateSpring: Animation {
+        .spring(response: 0.38, dampingFraction: 0.82, blendDuration: 0.15)
     }
 
     // MARK: Status color for tasks
@@ -108,44 +138,92 @@ func relativeTimeString(_ date: Date, fallbackFormat: String = "MMM d") -> Strin
     return df.string(from: date)
 }
 
-// MARK: - Glass Cell Modifier
+// MARK: - Liquid Glass (vanilla Apple primitive)
+//
+// Per Apple's Liquid Glass guidance (macOS 26+):
+//   - glass belongs only on the navigation/controls layer, never on content
+//   - never hand-paint sheens, gradient strokes, or borders — the material does that
+//   - neighboring glass surfaces must share a GlassEffectContainer
+//
+// `liquidGlass()` is a thin passthrough to `.glassEffect()` for the few remaining
+// call sites that previously used the custom modifier. New code should call
+// `.glassEffect(...)` directly with the proper shape.
 
-private struct GlassCell: ViewModifier {
-    var cornerRadius: CGFloat = 10
+extension View {
+    func liquidGlass(
+        cornerRadius: CGFloat = 14,
+        tint: Color? = nil,
+        intensity: Double = 1.0,
+        elevated: Bool = false
+    ) -> some View {
+        let glass: Glass = tint.map { Glass.regular.tint($0.opacity(0.6)) } ?? Glass.regular
+        return self.glassEffect(
+            glass,
+            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        )
+    }
+
+    func glassCell(cornerRadius: CGFloat = 14) -> some View {
+        glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+
+    /// Plain content card — flat dark fill, no glass. Per Apple's Liquid Glass
+    /// guidance, content layers (lists, cards, chat bubbles) must NOT use glass —
+    /// only navigation/controls do. Use this for grouped content sections.
+    func contentCard(cornerRadius: CGFloat = 12) -> some View {
+        background(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+
+    /// Smart edge fade for `ScrollView` — fades the top edge only while the
+    /// content is scrolled away from the top, and the bottom edge only while
+    /// it's away from the bottom. Snaps off cleanly at either extreme.
+    func smartScrollFade(_ length: CGFloat = 24) -> some View {
+        modifier(SmartScrollFade(length: length))
+    }
+}
+
+private struct SmartScrollFade: ViewModifier {
+    let length: CGFloat
+    @State private var fadeTop: Bool = false
+    @State private var fadeBottom: Bool = true
 
     func body(content: Content) -> some View {
         content
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(DN.surface.opacity(0.55))
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.04), Color.white.opacity(0.01)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            )
-                        )
+            .onScrollGeometryChange(for: ScrollEdges.self) { geo in
+                let off = geo.contentOffset.y
+                let inset = geo.contentInsets.top
+                let max  = geo.contentSize.height - geo.containerSize.height
+                let nearTop    = off <= inset + 1
+                let nearBottom = off >= max - 1
+                return ScrollEdges(top: !nearTop, bottom: !nearBottom)
+            } action: { _, new in
+                withAnimation(.easeOut(duration: 0.18)) {
+                    fadeTop = new.top
+                    fadeBottom = new.bottom
                 }
-            )
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.1), Color.white.opacity(0.03)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
+            }
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: fadeTop    ? .clear : .black, location: 0.0),
+                        .init(color: .black,                       location: Double(length) / 400),
+                        .init(color: .black,                       location: 1 - Double(length) / 400),
+                        .init(color: fadeBottom ? .clear : .black, location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
             )
     }
 }
 
-extension View {
-    func glassCell(cornerRadius: CGFloat = 10) -> some View {
-        modifier(GlassCell(cornerRadius: cornerRadius))
-    }
+private struct ScrollEdges: Equatable {
+    var top: Bool
+    var bottom: Bool
 }
 
 // MARK: - Set Toggle Helper
@@ -167,12 +245,13 @@ struct ActiveBadge: View {
 
     var body: some View {
         if count > 0 {
-            HStack(spacing: 3) {
-                Circle().fill(DN.warning).frame(width: 4, height: 4)
-                Text("\(count) ACTIVE")
-                    .font(DN.label(7))
-                    .tracking(0.6)
-                    .foregroundColor(DN.warning)
+            HStack(spacing: 4) {
+                Image(systemName: "circle.fill")
+                    .font(.system(size: 5))
+                    .foregroundStyle(.yellow)
+                Text("\(count) active")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
         }
     }

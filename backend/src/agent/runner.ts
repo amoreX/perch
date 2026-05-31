@@ -53,7 +53,7 @@ function dbSave(fn: () => Promise<void>) {
 async function ensureThread(userId: string, threadId?: string, title?: string): Promise<string> {
   if (threadId) {
     const { data } = await supabase
-      .from('threads')
+      .from('danotch_threads')
       .select('id')
       .eq('id', threadId)
       .eq('user_id', userId)
@@ -63,7 +63,7 @@ async function ensureThread(userId: string, threadId?: string, title?: string): 
 
   const id = threadId ?? uuid();
   const { data, error } = await supabase
-    .from('threads')
+    .from('danotch_threads')
     .insert({ id, user_id: userId, title: title?.slice(0, 80) })
     .select('id')
     .single();
@@ -82,7 +82,7 @@ async function saveMessage(
   content: string,
   metadata?: Record<string, unknown>
 ) {
-  const { error } = await supabase.from('messages').insert({
+  const { error } = await supabase.from('danotch_messages').insert({
     thread_id: threadId,
     user_id: userId,
     role,
@@ -96,7 +96,7 @@ async function saveMessage(
 
 async function updateThreadTimestamp(threadId: string) {
   await supabase
-    .from('threads')
+    .from('danotch_threads')
     .update({ updated_at: new Date().toISOString() })
     .eq('id', threadId);
 }
@@ -124,7 +124,7 @@ async function generateThreadTitle(
     const title = result.text.trim().slice(0, 80);
 
     if (title) {
-      await supabase.from('threads').update({ title }).eq('id', threadId);
+      await supabase.from('danotch_threads').update({ title }).eq('id', threadId);
       console.log(`[runner] Thread title: "${title}"`);
       notch.send({
         type: 'subagent_event',
@@ -406,7 +406,7 @@ export async function runChat(
 
 export async function getThreads(userId: string) {
   const { data, error } = await supabase
-    .from('threads')
+    .from('danotch_threads')
     .select('id, title, created_at, updated_at')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
@@ -420,7 +420,7 @@ export async function getThreads(userId: string) {
 
 export async function getThreadMessages(userId: string, threadId: string) {
   const { data, error } = await supabase
-    .from('messages')
+    .from('danotch_messages')
     .select('id, role, content, metadata, created_at')
     .eq('thread_id', threadId)
     .eq('user_id', userId)
@@ -434,7 +434,7 @@ export async function getThreadMessages(userId: string, threadId: string) {
 
 export async function deleteThread(userId: string, threadId: string) {
   const { error } = await supabase
-    .from('threads')
+    .from('danotch_threads')
     .delete()
     .eq('id', threadId)
     .eq('user_id', userId);
