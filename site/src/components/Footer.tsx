@@ -1,6 +1,6 @@
 export default function Footer() {
   return (
-    <footer className="bg-white border-t border-zinc-100">
+    <footer id="contact" className="bg-white border-t border-zinc-100">
       <div className="max-w-[1280px] mx-auto px-8 pt-16 pb-10">
         <p
           className="m-0 text-zinc-900 leading-none select-none"

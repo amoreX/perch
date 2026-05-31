@@ -124,7 +124,7 @@ export default function Hero() {
   }, []);
 
   return (
-    <section className="relative w-full overflow-hidden" style={{ height: '100dvh' }}>
+    <section id="home" className="relative w-full overflow-hidden" style={{ height: '100dvh' }}>
       {/* Hidden video — plays at full speed for smooth decode */}
       <video
         ref={videoRef}
