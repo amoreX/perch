@@ -38,14 +38,14 @@ app.use('/api/apps', createAppRoutes());
 app.use('/api/provider', createProviderRoutes());
 
 app.listen(config.port, () => {
-  console.log(`[danotch-backend] http://localhost:${config.port}`);
+  console.log(`[perch-backend] http://localhost:${config.port}`);
 
   // Start scheduler after server is up
   startScheduler(notch);
 });
 
 function shutdown() {
-  console.log('\n[danotch-backend] Shutting down...');
+  console.log('\n[perch-backend] Shutting down...');
   stopScheduler();
   notch.disconnect();
   // Force exit — don't wait for dangling connections

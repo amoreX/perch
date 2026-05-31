@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Danotch",
+    name: "Perch",
     platforms: [
         .macOS(.v26)
     ],
@@ -12,7 +12,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "Danotch",
+            name: "Perch",
             dependencies: [
                 .product(name: "Swifter", package: "swifter")
             ],

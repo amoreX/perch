@@ -261,18 +261,18 @@ class NotchViewModel: ObservableObject {
 
     func loadThreadHistory() {
         guard let auth = authManager else {
-            print("[Danotch] loadThreadHistory: no auth manager")
+            print("[Perch] loadThreadHistory: no auth manager")
             return
         }
         isLoadingHistory = true
-        print("[Danotch] loadThreadHistory: fetching...")
+        print("[Perch] loadThreadHistory: fetching...")
 
         // Refresh token if needed, then fetch
         Task {
             await auth.ensureValidToken()
             guard let token = auth.accessToken else {
                 await MainActor.run { self.isLoadingHistory = false }
-                print("[Danotch] loadThreadHistory: no token after refresh")
+                print("[Perch] loadThreadHistory: no token after refresh")
                 return
             }
             await self.fetchThreadHistory(token: token)
@@ -290,26 +290,26 @@ class NotchViewModel: ObservableObject {
                 self.isLoadingHistory = false
 
                 if let error {
-                    print("[Danotch] loadThreadHistory error: \(error.localizedDescription)")
+                    print("[Perch] loadThreadHistory error: \(error.localizedDescription)")
                     return
                 }
 
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard let data else {
-                    print("[Danotch] loadThreadHistory: no data, status=\(statusCode)")
+                    print("[Perch] loadThreadHistory: no data, status=\(statusCode)")
                     return
                 }
 
                 if statusCode != 200 {
                     let body = String(data: data, encoding: .utf8) ?? ""
-                    print("[Danotch] loadThreadHistory: status=\(statusCode) body=\(body)")
+                    print("[Perch] loadThreadHistory: status=\(statusCode) body=\(body)")
                     return
                 }
 
                 guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let threads = json["threads"] as? [[String: Any]] else {
                     let body = String(data: data, encoding: .utf8) ?? ""
-                    print("[Danotch] loadThreadHistory: parse failed, body=\(body)")
+                    print("[Perch] loadThreadHistory: parse failed, body=\(body)")
                     return
                 }
 
@@ -321,7 +321,7 @@ class NotchViewModel: ObservableObject {
                         updatedAt: t["updated_at"] as? String ?? ""
                     )
                 }
-                print("[Danotch] loadThreadHistory: loaded \(self.threadHistory.count) threads")
+                print("[Perch] loadThreadHistory: loaded \(self.threadHistory.count) threads")
             }
         }.resume()
     }
@@ -512,7 +512,7 @@ class NotchViewModel: ObservableObject {
             guard status == 200,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tasks = json["tasks"] as? [[String: Any]] else {
-                print("[Danotch] loadScheduledTasks: failed status=\(status)")
+                print("[Perch] loadScheduledTasks: failed status=\(status)")
                 return
             }
 
@@ -537,7 +537,7 @@ class NotchViewModel: ObservableObject {
 
             await MainActor.run {
                 self.scheduledTasks = parsed
-                print("[Danotch] loadScheduledTasks: \(parsed.count) tasks")
+                print("[Perch] loadScheduledTasks: \(parsed.count) tasks")
             }
         }
     }

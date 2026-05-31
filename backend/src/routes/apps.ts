@@ -152,7 +152,7 @@ function createSingleAppRoutes(appType: string, toolkitSlug: string, displayName
           <div style="text-align:center">
             <h1 style="font-size:48px;margin:0">✓</h1>
             <p style="color:#4A9E5C;font-size:18px;margin-top:12px">${displayName} connected successfully</p>
-            <p style="color:#666;font-size:14px;margin-top:8px">You can close this tab and return to Danotch</p>
+            <p style="color:#666;font-size:14px;margin-top:8px">You can close this tab and return to Perch</p>
           </div>
         </body>
       </html>

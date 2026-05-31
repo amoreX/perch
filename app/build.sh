@@ -4,10 +4,10 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "Building Danotch..."
+echo "Building Perch..."
 swift build -c release 2>&1
 
-BINARY=".build/release/Danotch"
+BINARY=".build/release/Perch"
 
 if [ ! -f "$BINARY" ]; then
     echo "Build failed: binary not found at $BINARY"
@@ -15,11 +15,11 @@ if [ ! -f "$BINARY" ]; then
 fi
 
 # Create app bundle for proper macOS integration
-BUNDLE_DIR="Danotch.app/Contents"
+BUNDLE_DIR="Perch.app/Contents"
 mkdir -p "$BUNDLE_DIR/MacOS"
 mkdir -p "$BUNDLE_DIR/Resources"
 
-cp "$BINARY" "$BUNDLE_DIR/MacOS/Danotch"
+cp "$BINARY" "$BUNDLE_DIR/MacOS/Perch"
 cp "$SCRIPT_DIR/Resources/AppIcon.icns" "$BUNDLE_DIR/Resources/AppIcon.icns"
 
 cat > "$BUNDLE_DIR/Info.plist" << 'PLIST'
@@ -32,7 +32,7 @@ cat > "$BUNDLE_DIR/Info.plist" << 'PLIST'
     <key>CFBundleName</key>
     <string>Perch</string>
     <key>CFBundleExecutable</key>
-    <string>Danotch</string>
+    <string>Perch</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
@@ -50,11 +50,11 @@ cat > "$BUNDLE_DIR/Info.plist" << 'PLIST'
 PLIST
 
 # Ad-hoc code sign
-codesign --force --sign - "$BUNDLE_DIR/MacOS/Danotch" 2>/dev/null || true
+codesign --force --sign - "$BUNDLE_DIR/MacOS/Perch" 2>/dev/null || true
 
 echo ""
 echo "Build complete!"
 echo ""
-echo "Run directly:   swift run Danotch"
-echo "Run app bundle: open Danotch.app"
-echo "Run binary:     .build/release/Danotch"
+echo "Run directly:   swift run Perch"
+echo "Run app bundle: open Perch.app"
+echo "Run binary:     .build/release/Perch"

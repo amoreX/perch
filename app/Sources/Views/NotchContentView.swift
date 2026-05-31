@@ -685,7 +685,7 @@ class NowPlayingMonitor: ObservableObject {
 
     private var timer: Timer?
     private var lastTrackKey: String?
-    private static let artPath = "/tmp/danotch_art.png"
+    private static let artPath = "/tmp/perch_art.png"
 
     var progress: Double { duration > 0 ? position / duration : 0 }
 

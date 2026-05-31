@@ -90,7 +90,7 @@ async function executeTask(task: Record<string, unknown>, notch: NotchBridge) {
     providerName = `${provider.providerName}/${provider.modelId}`;
 
     // Build system prompt
-    let systemPrompt = `You are running a scheduled task inside Danotch. The user set this up to run automatically. Be concise and actionable. Task name: "${taskName}".`;
+    let systemPrompt = `You are running a scheduled task inside Perch. The user set this up to run automatically. Be concise and actionable. Task name: "${taskName}".`;
 
     // For conditional notify tasks, add [NOTIFY]/[SKIP] instruction
     let actualPrompt = prompt;

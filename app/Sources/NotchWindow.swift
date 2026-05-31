@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-class DanotchPanel: NSPanel {
+class PerchPanel: NSPanel {
     override init(
         contentRect: NSRect,
         styleMask: NSWindow.StyleMask,
@@ -52,7 +52,7 @@ class NotchWindowController: NSObject {
     /// The first panel created hosts the SwiftUI view; secondary panels just
     /// mirror its frame so the UI stays in one place. We swap which panel is
     /// "active" as the cursor moves between monitors.
-    private var panels: [String: DanotchPanel] = [:]
+    private var panels: [String: PerchPanel] = [:]
     /// The panel currently hosting the SwiftUI view + reacting to hover.
     private var activeScreenUUID: String?
     var globalMonitor: Any?
@@ -66,7 +66,7 @@ class NotchWindowController: NSObject {
     private let panelWidth: CGFloat = 580
     private let panelHeight: CGFloat = 400
 
-    private var activePanel: DanotchPanel? {
+    private var activePanel: PerchPanel? {
         if let uuid = activeScreenUUID { return panels[uuid] }
         return nil
     }
@@ -104,7 +104,7 @@ class NotchWindowController: NSObject {
         ]
 
         for screen in NSScreen.screens {
-            let panel = DanotchPanel(
+            let panel = PerchPanel(
                 contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
                 styleMask: styleMask,
                 backing: .buffered,
@@ -145,7 +145,7 @@ class NotchWindowController: NSObject {
         activeScreenUUID = uuid
     }
 
-    private func positionPanel(_ panel: DanotchPanel, on screen: NSScreen) {
+    private func positionPanel(_ panel: PerchPanel, on screen: NSScreen) {
         let w = panel.frame.width
         let h = panel.frame.height
         panel.setFrameOrigin(NSPoint(

@@ -197,8 +197,15 @@ struct OnboardingView: View {
     private var welcomeStep: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Perch")
-                .font(.system(size: 48, weight: .light, design: .rounded))
-                .foregroundColor(.white)
+                .font(.system(size: 48, weight: .heavy, design: .default))
+                .italic()
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color(hex: 0xBC95FF), Color(hex: 0x5F14F5), Color(hex: 0x03A38B)],
+                        startPoint: UnitPoint(x: 0.3, y: 0),
+                        endPoint: UnitPoint(x: 0.8, y: 1)
+                    )
+                )
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
 
@@ -227,8 +234,15 @@ struct OnboardingView: View {
             // Sidebar
             VStack(alignment: .leading, spacing: 20) {
                 Text("Perch")
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 16, weight: .heavy))
+                    .italic()
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(hex: 0xBC95FF), Color(hex: 0x5F14F5), Color(hex: 0x03A38B)],
+                            startPoint: UnitPoint(x: 0.3, y: 0),
+                            endPoint: UnitPoint(x: 0.8, y: 1)
+                        )
+                    )
 
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach([OnboardingStep.account, .model, .apps, .permissions, .preferences], id: \.self) { item in

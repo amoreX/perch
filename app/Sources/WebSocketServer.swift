@@ -66,14 +66,14 @@ class WebSocketServer {
     func start() {
         do {
             try server.start(7778, forceIPv4: true)
-            print("[Danotch] WebSocket server running on ws://localhost:7778/ws")
+            print("[Perch] WebSocket server running on ws://localhost:7778/ws")
         } catch {
-            print("[Danotch] Failed to start WebSocket server: \(error)")
+            print("[Perch] Failed to start WebSocket server: \(error)")
         }
     }
 
     func stop() {
         server.stop()
-        print("[Danotch] WebSocket server stopped")
+        print("[Perch] WebSocket server stopped")
     }
 }

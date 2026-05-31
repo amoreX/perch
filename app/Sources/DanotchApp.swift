@@ -3,7 +3,7 @@ import AppKit
 import QuartzCore
 
 @main
-struct DanotchApp: App {
+struct PerchApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
