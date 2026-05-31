@@ -258,16 +258,17 @@ export default function Navbar() {
           href="/"
           className="h-10 px-6 inline-flex items-center justify-center rounded-full bg-white/10 no-underline"
           style={{
-            fontFamily: "'Steps Mono', monospace",
+            fontFamily: "'Arial', sans-serif",
             fontSize: 17,
-            fontWeight: 400,
-            color: '#ffffff',
+            fontWeight: 900 ,
+            fontStyle: 'italic',
+            color: '#8B7CF6',
             letterSpacing: '0.02em',
             lineHeight: 1,
             paddingTop: 1,
           }}
         >
-          Perch
+          P
         </a>
       </div>
 

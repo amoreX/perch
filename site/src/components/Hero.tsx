@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef } from 'react';
 import { motion, useMotionTemplate, useScroll, useTransform } from 'framer-motion';
 import Button from './Button';
 
@@ -10,43 +10,8 @@ function AppleIcon() {
   );
 }
 
-/**
- * Stop-motion video hero — using requestVideoFrameCallback.
- *
- * WHY this approach instead of currentTime/fastSeek:
- *   Seeking (even with fastSeek) forces the browser to decode from the nearest
- *   keyframe every call, causing stalls. requestVideoFrameCallback lets the
- *   video play at full speed through the browser's native decode pipeline
- *   (hardware-accelerated, no stalls). We simply choose to paint every 8th
- *   frame to a canvas — giving the choppy stop-motion look with zero lag.
- *
- * Pre-caching:
- *   The video is fetched as a blob on mount so the entire file is in memory
- *   before playback starts. This eliminates mid-loop buffering stalls.
- *
- * Fallback:
- *   Browsers without requestVideoFrameCallback (rare — Firefox < 130, older
- *   Safari) fall back to the video element displayed directly.
- */
-
-const STOP_MOTION_SKIP = 8; // paint every 8th frame → ~7.5 fps from 60fps source
-
-type rVFC = (
-  now: DOMHighResTimeStamp,
-  metadata: { presentedFrames: number },
-) => void;
-
-declare global {
-  interface HTMLVideoElement {
-    requestVideoFrameCallback(cb: rVFC): number;
-    cancelVideoFrameCallback(id: number): void;
-  }
-}
-
 export default function Hero() {
   const sectionRef = useRef<HTMLElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const videoRef  = useRef<HTMLVideoElement>(null);
   const { scrollYProgress: mediaScrollProgress } = useScroll({
     target: sectionRef,
     offset: ['start start', 'end start'],
@@ -59,83 +24,6 @@ export default function Hero() {
   const rawMediaBlur = useTransform(mediaBlurProgress, [0, 1], [0, 40]);
   const mediaFilter = useMotionTemplate`blur(${rawMediaBlur}px)`;
 
-  useEffect(() => {
-    const video  = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-
-    let blobUrl = '';
-    let rVFCId  = 0;
-
-    // ── 1. Blob-preload so the whole file is in memory ──────────────────────
-    fetch('/hero.mp4')
-      .then((r) => r.blob())
-      .then((blob) => {
-        blobUrl    = URL.createObjectURL(blob);
-        video.src  = blobUrl;
-        video.load();
-      });
-
-    // ── 2. Canvas sizing — match window so CSS object-cover math is trivial ─
-    const resize = () => {
-      canvas.width  = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(document.documentElement);
-
-    // ── 3. Cover-crop drawImage helper ───────────────────────────────────────
-    const ctx = canvas.getContext('2d', { alpha: false });
-
-    const drawFrame = () => {
-      if (!ctx || !video.videoWidth) return;
-      const vw = video.videoWidth, vh = video.videoHeight;
-      const cw = canvas.width,     ch = canvas.height;
-      const videoAR  = vw / vh;
-      const canvasAR = cw / ch;
-      let sx = 0, sy = 0, sw = vw, sh = vh;
-      if (videoAR > canvasAR) {
-        sw = Math.round(vh * canvasAR);
-        sx = Math.round((vw - sw) / 2);
-      } else {
-        sh = Math.round(vw / canvasAR);
-        sy = Math.round((vh - sh) / 2);
-      }
-      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
-    };
-
-    // ── 4. rVFC loop — paint every 8th presented frame ──────────────────────
-    const hasRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
-
-    const onFrame: rVFC = (_now, meta) => {
-      if (meta.presentedFrames % STOP_MOTION_SKIP === 0) drawFrame();
-      rVFCId = video.requestVideoFrameCallback(onFrame);
-    };
-
-    const start = () => {
-      video.play().catch(() => {/* autoplay blocked */});
-
-      if (hasRVFC) {
-        rVFCId = video.requestVideoFrameCallback(onFrame);
-      }
-      // Fallback: video plays normally (smooth, not stop-motion), canvas hidden
-      if (!hasRVFC) {
-        canvas.style.display = 'none';
-        video.style.display  = 'block';
-      }
-    };
-
-    video.addEventListener('canplay', start, { once: true });
-
-    return () => {
-      if (rVFCId) video.cancelVideoFrameCallback(rVFCId);
-      ro.disconnect();
-      video.pause();
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
-    };
-  }, []);
-
   return (
     <section ref={sectionRef} id="home" className="relative w-full overflow-hidden bg-[#111111]" style={{ height: '100dvh' }}>
       <motion.div
@@ -143,28 +31,12 @@ export default function Hero() {
         className="absolute inset-0"
         style={{ y: rawMediaY, filter: mediaFilter, height: 'calc(100% + 300px)' }}
       >
-        {/* Hidden video — plays at full speed for smooth decode */}
-        <video
-          ref={videoRef}
-          muted
-          loop
-          playsInline
-          preload="auto"
+        <img
+          src="/hero-image.jpg"
+          alt=""
           aria-hidden="true"
-          style={{ display: 'none', position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-        />
-
-        {/* Canvas — receives frames at stop-motion rate, with grayscale + dim */}
-        <canvas
-          ref={canvasRef}
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            filter: 'saturate(0) brightness(1) contrast(0.9)',
-          }}
+          className="absolute inset-0 h-full w-full scale-150 object-cover object-center"
+          style={{ filter: 'saturate(0) brightness(1) contrast(2)' }}
         />
 
         {/* Purple tint overlay */}
@@ -173,7 +45,7 @@ export default function Hero() {
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'rgba(107, 88, 228, 0.7)',
+            background: 'rgba(107, 88, 228, 0)',
             mixBlendMode: 'overlay',
             pointerEvents: 'none',
           }}
