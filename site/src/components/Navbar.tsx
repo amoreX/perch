@@ -21,11 +21,9 @@ const NOTCH = '#111111';
 const BAR_HEIGHT = 10;
 const SIDE_BAR_WIDTH = 10;
 const SHOULDER_SIZE = 8;
-const HOVERED_SHOULDER_SIZE = 12;
 const MIDDLE_SHOULDER_OVERLAP = 0.5;
 const CENTER_NOTCH_HEIGHT = 56;
 const CENTER_NOTCH_PADDING_X = 8;
-const CENTER_NOTCH_HOVER_PADDING_X = 14;
 const CENTER_SECTION_FALLBACK_WIDTH = 86;
 const CENTER_INDICATOR_HEIGHT = 40;
 const NOTCH_SPRING = { type: 'spring' as const, stiffness: 420, damping: 32 };
@@ -129,7 +127,6 @@ function NotchRailShoulder({ side }: { side: 'left' | 'right' }) {
 
 export default function Navbar() {
   const [activeSection, setActiveSection] = useState(NAV_SECTIONS[0].id);
-  const [isCenterHovered, setIsCenterHovered] = useState(false);
   const sectionRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   const scrollLockRef = useRef<string | null>(null);
   const scrollSettleTimerRef = useRef<number | null>(null);
@@ -145,13 +142,6 @@ export default function Navbar() {
     .slice(0, activeIndex)
     .reduce((total, width) => total + width, 0);
   const sectionRowWidth = sectionWidths.reduce((total, width) => total + width, 0);
-  const expandedViewportWidth = sectionRowWidth;
-  const centerViewportWidth = isCenterHovered ? expandedViewportWidth : activeSectionWidth;
-  const centerPaddingX = isCenterHovered ? CENTER_NOTCH_HOVER_PADDING_X : CENTER_NOTCH_PADDING_X;
-  const sectionRowX = isCenterHovered
-    ? 0
-    : -activeSectionOffset;
-  const centerShoulderSize = isCenterHovered ? HOVERED_SHOULDER_SIZE : SHOULDER_SIZE;
 
   useLayoutEffect(() => {
     const measureSectionWidths = () => {
@@ -229,10 +219,20 @@ export default function Navbar() {
     };
   }, []);
 
-  const handleSectionClick = (sectionId: string) => {
+  const handleSectionClick = (event: React.MouseEvent<HTMLAnchorElement>, sectionId: string) => {
     scrollLockRef.current = sectionId;
     if (scrollSettleTimerRef.current) window.clearTimeout(scrollSettleTimerRef.current);
     setActiveSection(sectionId);
+
+    if (sectionId === 'contact') return;
+
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+
+    event.preventDefault();
+    const sectionTop = section.getBoundingClientRect().top + window.scrollY;
+    const targetY = sectionTop - (window.innerHeight - section.offsetHeight) / 2;
+    window.scrollTo({ top: Math.max(targetY, 0), behavior: 'smooth' });
   };
 
   return (
@@ -256,47 +256,54 @@ export default function Navbar() {
         <NotchRailShoulder side="left" />
         <a
           href="/"
-          className="h-10 px-6 inline-flex items-center justify-center rounded-full bg-white/10 no-underline"
+          className="h-10 w-[88px] inline-flex items-center justify-center rounded-full bg-white no-underline"
           style={{
-            fontFamily: "'Arial', sans-serif",
-            fontSize: 17,
-            fontWeight: 900 ,
+            background: '#ffffff',
+            color: 'transparent',
+            fontFamily: '"SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            fontSize: 25,
+            fontWeight: 800,
             fontStyle: 'italic',
-            color: '#8B7CF6',
-            letterSpacing: '0.02em',
-            lineHeight: 1,
-            paddingTop: 1,
+            letterSpacing: 0,
+            lineHeight: 'normal',
           }}
         >
-          P
+          <span
+            style={{
+              background: 'linear-gradient(193deg, #BC95FF 20.53%, #5F14F5 32.29%, #03A38B 105.56%)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              display: 'inline-block',
+              paddingRight: 4,
+            }}
+          >
+            P
+          </span>
         </a>
       </div>
 
       {/* Center notch — equal 8px pad (matches h-10 buttons' 8px vertical breathing room) */}
       <motion.div
         className="absolute left-1/2 top-0 flex items-center pointer-events-auto overflow-visible"
-        onMouseEnter={() => setIsCenterHovered(true)}
-        onMouseLeave={() => setIsCenterHovered(false)}
         initial={false}
         style={{ x: '-50%', background: NOTCH, borderRadius: '0 0 28px 28px' }}
         animate={{
-          width: centerViewportWidth + centerPaddingX * 2,
+          width: sectionRowWidth + CENTER_NOTCH_PADDING_X * 2,
           height: CENTER_NOTCH_HEIGHT,
-          paddingLeft: centerPaddingX,
-          paddingRight: centerPaddingX,
+          paddingLeft: CENTER_NOTCH_PADDING_X,
+          paddingRight: CENTER_NOTCH_PADDING_X,
         }}
         transition={NOTCH_SPRING}
       >
-        <NotchCornerShoulder side="left" overlap={MIDDLE_SHOULDER_OVERLAP} size={centerShoulderSize} />
-        <NotchCornerShoulder side="right" overlap={MIDDLE_SHOULDER_OVERLAP} size={centerShoulderSize} />
+        <NotchCornerShoulder side="left" overlap={MIDDLE_SHOULDER_OVERLAP} />
+        <NotchCornerShoulder side="right" overlap={MIDDLE_SHOULDER_OVERLAP} />
         <motion.div
           aria-hidden="true"
           className="absolute rounded-full"
           initial={false}
           animate={{
-            left: isCenterHovered
-              ? centerPaddingX + activeSectionOffset
-              : centerPaddingX,
+            left: CENTER_NOTCH_PADDING_X + activeSectionOffset,
             width: activeSectionWidth,
           }}
           transition={NOTCH_SPRING}
@@ -309,14 +316,14 @@ export default function Navbar() {
         <motion.div
           className="relative z-10 overflow-hidden"
           initial={false}
-          animate={{ width: centerViewportWidth }}
+          animate={{ width: sectionRowWidth }}
           transition={NOTCH_SPRING}
           style={{ height: CENTER_INDICATOR_HEIGHT }}
         >
           <motion.div
             className="flex h-full"
             initial={false}
-            animate={{ x: sectionRowX }}
+            animate={{ x: 0 }}
             transition={NOTCH_SPRING}
             style={{ width: sectionRowWidth }}
           >
@@ -327,7 +334,7 @@ export default function Navbar() {
                   sectionRefs.current[index] = element;
                 }}
                 href={section.href}
-                onClick={() => handleSectionClick(section.id)}
+                onClick={(event) => handleSectionClick(event, section.id)}
                 className={`h-10 px-3.5 flex shrink-0 items-center justify-center rounded-full text-sm no-underline text-white/65 ${
                   index === activeIndex ? '' : 'hover:text-white/90'
                 }`}

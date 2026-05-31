@@ -25,7 +25,7 @@ export default function Download() {
       <div
         aria-hidden="true"
         className="absolute -left-[600px] right-0 -top-[200px] bottom-0 translate-x-[600px] bg-cover bg-center grayscale"
-        style={{ backgroundImage: 'url(/pexels-gasparzaldo-19581192.jpg)', filter: 'saturate(0) brightness(0.8) contrast(1.2)' }}
+        style={{ backgroundImage: 'url(/hero-image.jpg)', filter: 'saturate(0) brightness(0.8) contrast(1.2) blur(100px)' }}
       />
       <div
         aria-hidden="true"
