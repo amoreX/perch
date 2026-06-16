@@ -197,7 +197,7 @@ struct NotchShellView: View {
     @ViewBuilder
     private var expandedContent: some View {
         switch viewModel.viewState {
-        case .overview, .taskList, .agentChat:
+        case .overview, .taskList, .agentChat, .agents:
             NotchContentView(viewModel: viewModel)
         case .stats:
             StatsPanel(viewModel: viewModel)
@@ -306,11 +306,16 @@ struct NotchShellView: View {
         return HStack(alignment: .center, spacing: 0) {
             Color.clear.frame(width: sideInset)
 
-            // Left cluster — Today. Single tab keeps the bar uncluttered;
-            // chat/thread navigation lives within Today itself.
+            // Left cluster — Today + Agents
             HStack(spacing: 6) {
                 topBarTab("Today", isActive: viewModel.viewState == .overview || viewModel.isInTaskOrChat) {
                     withAnimation(DN.transition) { viewModel.viewState = .overview }
+                }
+                topBarIcon(
+                    "sparkles",
+                    isActive: viewModel.viewState == .agents
+                ) {
+                    withAnimation(DN.transition) { viewModel.viewState = .agents }
                 }
             }
 
@@ -478,11 +483,9 @@ struct NotchShoulder: Shape {
 struct NotificationsPanel: View {
     @ObservedObject var viewModel: NotchViewModel
 
-    // Group notifications by sourceId (or by id if no sourceId)
     private var grouped: [(key: String, title: String, items: [NotificationItem])] {
         var dict: [(key: String, title: String, items: [NotificationItem])] = []
         var seen: [String: Int] = [:]
-
         for notif in viewModel.notifications {
             let groupKey = notif.sourceId ?? notif.id
             if let idx = seen[groupKey] {
@@ -496,38 +499,55 @@ struct NotificationsPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DN.spaceSM) {
-            HStack {
-                Text("Notifications")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(DN.textDisplay)
-
-                Spacer()
-
-                if viewModel.unreadCount > 0 {
-                    Button("Mark all read") { viewModel.markAllRead() }
-                        .buttonStyle(.glass)
-                        .controlSize(.small)
-                        .tint(.clear)
-                }
-            }
-            .padding(.bottom, DN.spaceXS)
-
-            if viewModel.notifications.isEmpty {
-                VStack(spacing: 6) {
-                    Spacer().frame(height: 28)
-                    Text("No notifications")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(DN.textSecondary)
-                    Text("Scheduled task results will appear here")
-                        .font(.system(size: 11))
-                        .foregroundColor(DN.textDisabled.opacity(0.8))
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 10) {
+                // Header row
+                HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bell")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Text("NOTIFICATIONS")
+                            .font(.system(size: 10, weight: .semibold))
+                            .tracking(0.5)
+                            .foregroundStyle(.secondary)
+                        if viewModel.unreadCount > 0 {
+                            Text("\(viewModel.unreadCount)")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(DN.accent)
+                        }
+                    }
                     Spacer()
+                    if viewModel.unreadCount > 0 {
+                        Button(action: { viewModel.markAllRead() }) {
+                            Text("Mark all read")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10)
+                                .frame(height: 20)
+                                .glassEffect(.regular, in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .frame(maxWidth: .infinity)
-            } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: DN.spaceXS) {
+
+                if viewModel.notifications.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "bell.slash")
+                            .font(.system(size: 22, weight: .light))
+                            .foregroundStyle(.tertiary)
+                        Text("No notifications")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Text("Scheduled task results will appear here")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 20)
+                } else {
+                    VStack(spacing: 10) {
                         ForEach(grouped, id: \.key) { group in
                             NotificationGroupRow(
                                 title: group.title,
@@ -538,10 +558,9 @@ struct NotificationsPanel: View {
                     }
                 }
             }
+            .padding(.vertical, 6)
         }
-        .onAppear {
-            viewModel.loadNotifications()
-        }
+        .onAppear { viewModel.loadNotifications() }
     }
 }
 
@@ -556,102 +575,86 @@ struct NotificationGroupRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Group header
-            HStack(spacing: DN.spaceSM) {
+            // Card header
+            HStack(spacing: 8) {
+                // Unread dot
                 Circle()
-                    .fill(unreadCount > 0 ? DN.accent : .clear)
+                    .fill(unreadCount > 0 ? DN.accent : Color.clear)
                     .frame(width: 5, height: 5)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: DN.spaceXS) {
-                        Text(title)
-                            .font(DN.body(11, weight: unreadCount > 0 ? .medium : .regular))
-                            .foregroundColor(unreadCount > 0 ? DN.textPrimary : DN.textSecondary)
-                            .lineLimit(1)
-
-                        if items.count > 1 {
-                            Text("\(items.count)")
-                                .font(DN.mono(8))
-                                .foregroundColor(DN.textDisabled)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(DN.border)
-                                .clipShape(RoundedRectangle(cornerRadius: 3))
-                        }
-                    }
-
-                    HStack(spacing: DN.spaceXS) {
+                    Text(title)
+                        .font(.system(size: 12, weight: unreadCount > 0 ? .semibold : .medium))
+                        .foregroundStyle(unreadCount > 0 ? Color.white : Color.secondary)
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
                         Text("Scheduled")
-                            .font(DN.mono(8))
-                            .foregroundColor(DN.textDisabled)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.tertiary)
                         Text("·")
-                            .foregroundColor(DN.textDisabled)
+                            .foregroundStyle(.tertiary)
                         Text(notifDate(latest.createdAt))
-                            .font(DN.mono(8))
-                            .foregroundColor(DN.textDisabled)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.tertiary)
                     }
                 }
 
                 Spacer()
 
-                if isExpanded {
-                    // Pause/resume the source task
-                    if let sourceId = latest.sourceId {
-                        Button(action: {
-                            let task = viewModel.scheduledTasks.first { $0.id == sourceId }
-                            viewModel.toggleScheduledTask(sourceId, enabled: !(task?.enabled ?? true))
-                        }) {
-                            let task = viewModel.scheduledTasks.first { $0.id == latest.sourceId }
-                            Image(systemName: task?.enabled != false ? "pause.circle" : "play.circle")
-                                .font(.system(size: 12))
-                                .foregroundColor(task?.enabled != false ? DN.warning : DN.success)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button(action: {
-                            withAnimation(.easeOut(duration: DN.microDuration)) {
-                                viewModel.deleteScheduledTask(sourceId)
-                            }
-                        }) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 10))
-                                .foregroundColor(DN.accent)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                if items.count > 1 {
+                    Text("\(items.count)")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
                 }
 
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundColor(DN.textDisabled)
+                if isExpanded, let sourceId = latest.sourceId {
+                    let task = viewModel.scheduledTasks.first { $0.id == sourceId }
+                    Button(action: {
+                        viewModel.toggleScheduledTask(sourceId, enabled: !(task?.enabled ?? true))
+                    }) {
+                        Image(systemName: task?.enabled != false ? "pause.circle" : "play.circle")
+                            .font(.system(size: 12))
+                            .foregroundStyle(task?.enabled != false ? DN.warning : DN.success)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: {
+                        viewModel.deleteScheduledTask(sourceId)
+                    }) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 11))
+                            .foregroundStyle(DN.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
             }
-            .padding(.horizontal, DN.spaceSM)
-            .padding(.vertical, DN.spaceXS + 2)
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, isExpanded ? 8 : 12)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.easeOut(duration: DN.microDuration)) {
-                    isExpanded.toggle()
-                }
+                withAnimation(DN.transition) { isExpanded.toggle() }
             }
 
-            // Expanded: show each run
             if isExpanded {
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(spacing: 0) {
                     ForEach(items) { notif in
                         NotificationRunRow(notif: notif, viewModel: viewModel)
                     }
                 }
-                .padding(.leading, DN.spaceMD + DN.spaceSM)
-                .padding(.trailing, DN.spaceSM)
-                .padding(.bottom, DN.spaceXS)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
                 .transition(.opacity)
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.white.opacity(isExpanded ? 0.08 : (unreadCount > 0 ? 0.05 : 0.0)))
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCell(cornerRadius: 18)
+        .animation(DN.transition, value: isExpanded)
     }
 }
 
@@ -659,45 +662,50 @@ struct NotificationRunRow: View {
     let notif: NotificationItem
     @ObservedObject var viewModel: NotchViewModel
     @State private var showBody = false
+    @State private var isHovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: DN.spaceXS) {
+            HStack(spacing: 8) {
                 Circle()
-                    .fill(notif.read ? DN.textDisabled : DN.accent)
-                    .frame(width: 3, height: 3)
+                    .fill(notif.read ? Color.white.opacity(0.15) : DN.accent)
+                    .frame(width: 5, height: 5)
 
                 Text(notifDate(notif.createdAt))
-                    .font(DN.mono(8))
-                    .foregroundColor(notif.read ? DN.textDisabled : DN.textSecondary)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(notif.read ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
 
                 Spacer()
 
                 if notif.body != nil {
-                    Image(systemName: showBody ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 7))
-                        .foregroundColor(DN.textDisabled)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(showBody ? 90 : 0))
                 }
             }
-            .padding(.vertical, DN.spaceXS)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(isHovering ? 0.06 : 0))
+            )
             .contentShape(Rectangle())
+            .onHover { isHovering = $0 }
             .onTapGesture {
-                if notif.body != nil {
-                    withAnimation(.easeOut(duration: DN.microDuration)) {
-                        showBody.toggle()
-                    }
-                    if !notif.read {
-                        viewModel.markNotificationRead(notif.id)
-                    }
-                }
+                guard notif.body != nil else { return }
+                withAnimation(DN.transition) { showBody.toggle() }
+                if !notif.read { viewModel.markNotificationRead(notif.id) }
             }
 
             if showBody, let body = notif.body, !body.isEmpty {
                 MarkdownView(text: body, isFinal: true)
-                    .padding(.bottom, DN.spaceXS)
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 6)
                     .transition(.opacity)
             }
         }
+        .animation(DN.transition, value: showBody)
     }
 }
 

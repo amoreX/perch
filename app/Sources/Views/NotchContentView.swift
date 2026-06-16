@@ -10,6 +10,8 @@ struct NotchContentView: View {
                 TodayPage(viewModel: viewModel)
             case .agentChat(let taskId):
                 AgentChatView(viewModel: viewModel, taskId: taskId)
+            case .agents:
+                AgentsPage(viewModel: viewModel)
             case .stats, .processList, .settings, .notifications:
                 EmptyView()
             }
@@ -1060,6 +1062,242 @@ struct NowPlayingView: View {
                 .foregroundColor(accentColor)
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Agents Page
+
+struct AgentsPage: View {
+    @ObservedObject var viewModel: NotchViewModel
+
+    private var activeTasks: [SubagentTask] { viewModel.tasks.filter { !$0.isFromHistory } }
+    private var hasContent: Bool {
+        !viewModel.agentMonitor.groupedAgents.isEmpty ||
+        !activeTasks.isEmpty ||
+        !viewModel.scheduledTasks.isEmpty
+    }
+
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 10) {
+                if hasContent {
+                    ForEach(viewModel.agentMonitor.groupedAgents) { group in                        AgentsGlassCard(
+                            group: group,
+                            showLiveState: viewModel.settings.showAgentLiveState,
+                            collapsedGroups: $viewModel.settings.collapsedGroups
+                        ) { agent in
+                            viewModel.agentMonitor.activateAgent(agent)
+                        }
+                    }
+
+                    if !activeTasks.isEmpty {
+                        ChatsGlassCard(tasks: activeTasks, viewModel: viewModel)
+                    }
+
+                    if !viewModel.scheduledTasks.isEmpty {
+                        ScheduledGlassCard(viewModel: viewModel)
+                    }
+                } else {
+                    emptyState
+                }
+            }
+            .padding(.vertical, 6)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { viewModel.loadScheduledTasks() }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 22, weight: .light))
+                .foregroundStyle(.tertiary)
+            Text("No active agents")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text("Start a Claude Code session or\nschedule a task to see it here")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, 30)
+    }
+}
+
+// Glass card showing one agent group (e.g. Claude Code sessions)
+private struct AgentsGlassCard: View {
+    let group: AgentGroup
+    let showLiveState: Bool
+    @Binding var collapsedGroups: Set<String>
+    let onTapAgent: (DetectedAgent) -> Void
+
+    private var isExpanded: Bool { !collapsedGroups.contains(group.id) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Card header
+            Button(action: {
+                guard group.agents.count > 1 else { return }
+                withAnimation(DN.transition) { collapsedGroups.toggle(group.id) }
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: group.type.icon)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(group.type.brandColor)
+                    Text(group.type.rawValue.uppercased())
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundStyle(group.type.brandColor)
+                    if group.agents.count > 1 {
+                        Text("\(group.agents.count)")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(group.type.brandColor.opacity(0.6))
+                    }
+                    Spacer()
+                    if group.runningCount > 0 {
+                        HStack(spacing: 3) {
+                            Circle().fill(DN.warning).frame(width: 5, height: 5)
+                            Text("\(group.runningCount)")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if group.agents.count > 1 {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, isExpanded ? 8 : 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(spacing: 0) {
+                    ForEach(group.agents) { agent in
+                        AgentSessionRow(agent: agent, showLiveState: showLiveState, isCompact: false) {
+                            onTapAgent(agent)
+                        }
+                        .padding(.horizontal, 6)
+                    }
+                }
+                .padding(.bottom, 6)
+                .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCell(cornerRadius: 18)
+        .animation(DN.transition, value: isExpanded)
+    }
+}
+
+// Glass card showing active chat tasks
+private struct ChatsGlassCard: View {
+    let tasks: [SubagentTask]
+    @ObservedObject var viewModel: NotchViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "bubble.left")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("CHATS")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(tasks.count)")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            VStack(spacing: 0) {
+                ForEach(tasks) { task in
+                    AgentRow(
+                        task: task,
+                        isCompact: viewModel.settings.compactAgentRows,
+                        activityText: viewModel.activityText(for: task)
+                    ) {
+                        withAnimation(DN.transition) {
+                            viewModel.viewState = .agentChat(task.id)
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                }
+            }
+            .padding(.bottom, 6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCell(cornerRadius: 18)
+    }
+}
+
+// Glass card showing scheduled tasks
+private struct ScheduledGlassCard: View {
+    @ObservedObject var viewModel: NotchViewModel
+
+    private var isExpanded: Bool { !viewModel.settings.collapsedGroups.contains("scheduled") }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            Button(action: {
+                withAnimation(DN.transition) {
+                    viewModel.settings.collapsedGroups.toggle("scheduled")
+                }
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "clock.arrow.2.circlepath")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(DN.warning)
+                    Text("SCHEDULED")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    let enabled = viewModel.scheduledTasks.filter { $0.enabled }.count
+                    if enabled > 0 {
+                        HStack(spacing: 3) {
+                            Circle().fill(DN.warning).frame(width: 5, height: 5)
+                            Text("\(enabled)")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, isExpanded ? 8 : 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(spacing: 0) {
+                    ForEach(viewModel.scheduledTasks) { task in
+                        ScheduledTaskRow(task: task, viewModel: viewModel)
+                    }
+                }
+                .padding(.bottom, 6)
+                .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCell(cornerRadius: 18)
+        .animation(DN.transition, value: isExpanded)
     }
 }
 
