@@ -432,7 +432,7 @@ class NotchViewModel: ObservableObject {
                       let title = n["title"] as? String else { return nil }
                 return NotificationItem(
                     id: id, title: title,
-                    body: n["body"] as? String,
+                    body: (n["body"] as? String).map { Self.cleanNotifBody($0) },
                     source: n["source"] as? String ?? "system",
                     sourceId: n["source_id"] as? String,
                     read: n["read"] as? Bool ?? false,
@@ -1190,7 +1190,7 @@ class NotchViewModel: ObservableObject {
               let id = data["id"] as? String,
               let title = data["title"] as? String else { return }
 
-        let body = data["body"] as? String ?? ""
+        let body = Self.cleanNotifBody(data["body"] as? String ?? "")
 
         let item = NotificationItem(
             id: id,
@@ -1210,7 +1210,7 @@ class NotchViewModel: ObservableObject {
         // Soft peek — don't fully expand, just grow the notch slightly
         withAnimation(.snappy(duration: 0.35)) {
             peekTitle = title
-            peekBody = String(body.prefix(300))
+            peekBody = String(Self.cleanNotifBody(body).prefix(300))
             isPeeking = true
         }
 
@@ -1228,6 +1228,23 @@ class NotchViewModel: ObservableObject {
             isPeeking = false
             peekHovering = false
         }
+    }
+
+    // MARK: - Notification Body Cleaning
+
+    /// Strips tool call/response XML blocks from notification bodies so raw
+    /// agent internals don't leak into the peek bar or notification list.
+    static func cleanNotifBody(_ text: String) -> String {
+        var result = text
+        // Strip <tool_call>...</tool_call> and <tool_response>...</tool_response> blocks
+        let patterns = ["<tool_call>[\\s\\S]*?</tool_call>", "<tool_response>[\\s\\S]*?</tool_response>"]
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                let range = NSRange(result.startIndex..., in: result)
+                result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: "")
+            }
+        }
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Goofy Loading Phrases
