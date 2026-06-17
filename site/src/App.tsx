@@ -1,5 +1,5 @@
-import V7Split from './versions/V7Split';
+import PerchSite from './PerchSite';
 
 export default function App() {
-  return <V7Split />;
+  return <PerchSite />;
 }

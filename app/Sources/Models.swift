@@ -209,6 +209,7 @@ enum NotchViewState: Equatable {
     case overview
     case taskList
     case agentChat(String)
+    case agents
     case stats
     case processList
     case settings
@@ -219,6 +220,7 @@ enum NotchViewState: Equatable {
         case (.overview, .overview): return true
         case (.taskList, .taskList): return true
         case (.agentChat(let a), .agentChat(let b)): return a == b
+        case (.agents, .agents): return true
         case (.stats, .stats): return true
         case (.processList, .processList): return true
         case (.settings, .settings): return true
@@ -234,6 +236,7 @@ enum NotchViewState: Equatable {
         case .overview: return "overview"
         case .taskList: return "taskList"
         case .agentChat(let id): return "agentChat-\(id)"
+        case .agents: return "agents"
         case .stats: return "stats"
         case .processList: return "processList"
         case .settings: return "settings"
