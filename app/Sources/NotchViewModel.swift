@@ -66,11 +66,30 @@ class NotchSettings: ObservableObject {
     @Published var compactAgentRows: Bool      { didSet { save() } }
 
     // Computed from pinnedWidgets for backward compatibility
-    var showMusic: Bool {
-        pinnedWidgets.contains(.music)
-    }
-    var musicSize: MusicSize {
-        pinnedWidgets.count > 1 ? .mini : .big
+    var showMusic: Bool { pinnedWidgets.contains(.music) }
+    var musicSize: MusicSize { pinnedWidgets.count > 1 ? .mini : .big }
+
+    /// Height of the expanded content area (below the top-bar) for the Today view.
+    /// Stats-type widgets (ram/disk/network/uptime/processes) are grouped into a
+    /// single row, so they only add one row's height regardless of how many are pinned.
+    var todayExpandedH: CGFloat {
+        let spacing: CGFloat = 10
+        var h: CGFloat = 72 + spacing  // clock card + gap
+
+        let statsTypes: [PinnedWidget] = [.ram, .disk, .network, .uptime, .processes]
+        let hasStatRow = pinnedWidgets.contains { statsTypes.contains($0) }
+
+        for w in pinnedWidgets {
+            switch w {
+            case .music:    h += 96 + spacing
+            case .calendar: h += 88 + spacing
+            default: break  // counted below as a single row
+            }
+        }
+        if hasStatRow { h += 80 + spacing }
+
+        h += 46 + 10  // composer + bottom padding
+        return h
     }
 
     // UI state (persisted across restarts)
@@ -728,26 +747,8 @@ class NotchViewModel: ObservableObject {
     }
 
     func resetApp(_ appType: String) {
-        guard let auth = authManager else { return }
-        appLoading[appType] = true
         appError[appType] = nil
-        Task {
-            await auth.ensureValidToken()
-            guard let token = auth.accessToken else {
-                await MainActor.run { self.appLoading[appType] = false }
-                return
-            }
-            var request = URLRequest(url: URL(string: "\(APIConfig.baseURL)/api/apps/\(appType)/reset")!)
-            request.httpMethod = "POST"
-            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-            _ = try? await URLSession.shared.data(for: request)
-            await MainActor.run {
-                self.appConnected[appType] = false
-                self.appLoading[appType] = false
-            }
-        }
+        appLoading[appType] = false
     }
 
     // MARK: - Provider Config (BYOK)

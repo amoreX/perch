@@ -19,32 +19,56 @@ struct NotchContentView: View {
     }
 }
 
-// MARK: - Today Page (single, non-scrolling)
+// MARK: - Today Page
 //
-// Three stacked pieces sized to fit the expanded notch height exactly:
-//   1. Clock card
-//   2. Music card (album art + scrub bar + transport, or "Nothing playing" empty state)
-//   3. Composer pill (chat input)
+// Clock card is always shown. Each pinned widget renders its own card.
+// Stats-type widgets (ram/disk/network/uptime/processes) share one row.
+// Composer pill is always shown at the bottom.
+// Height adapts via NotchSettings.todayExpandedH.
 
 private struct TodayPage: View {
     @ObservedObject var viewModel: NotchViewModel
     @State private var composerText: String = ""
     @FocusState private var composerFocused: Bool
 
+    private let statsTypes: [PinnedWidget] = [.ram, .disk, .network, .uptime, .processes]
+    private var pinned: [PinnedWidget] { viewModel.settings.pinnedWidgets }
+    private var statWidgets: [PinnedWidget] { pinned.filter { statsTypes.contains($0) } }
+
     var body: some View {
-        VStack(spacing: 10) {
+        ScrollView(.vertical, showsIndicators: false) {
+          VStack(spacing: 10) {
+            // Always: clock
             TodayClockCard(viewModel: viewModel)
-                .frame(maxHeight: .infinity)
+                .frame(height: 72)
 
-            TodayMusicCard(monitor: viewModel.nowPlaying)
-                .frame(maxHeight: .infinity)
+            // Each pinned widget in order
+            ForEach(pinned, id: \.rawValue) { widget in
+                switch widget {
+                case .music:
+                    TodayMusicCard(monitor: viewModel.nowPlaying)
+                        .frame(height: 96)
+                case .calendar:
+                    TodayInlineCalendarCard()
+                        .frame(height: 88)
+                default:
+                    EmptyView() // stats handled below
+                }
+            }
 
-            TodayStatsRow(stats: viewModel.statsMonitor)
-                .frame(maxHeight: .infinity)
+            // All stat-type widgets in one shared row
+            if !statWidgets.isEmpty {
+                TodayStatsRow(stats: viewModel.statsMonitor, widgets: statWidgets)
+                    .frame(height: 80)
+            }
 
+            // Always: composer
             composer
+          }
+          .padding(.bottom, 4)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .scrollIndicators(.never)
+        .frame(maxWidth: .infinity, alignment: .top)
         .onChange(of: viewModel.shouldFocusChatInput) { _, shouldFocus in
             if shouldFocus {
                 composerFocused = true
@@ -238,33 +262,45 @@ private struct TodayMusicCard: View {
     }
 }
 
-// MARK: - Today stats row
+// MARK: - Today stats row (widget-driven)
 
 private struct TodayStatsRow: View {
     @ObservedObject var stats: SystemStatsMonitor
+    let widgets: [PinnedWidget]
 
     var body: some View {
         HStack(spacing: 10) {
-            TodayStatTile(
-                icon: "cpu",
-                label: "CPU",
-                value: "\(Int(stats.cpuUsage))%",
-                progress: stats.cpuUsage / 100,
-                tint: tint(for: stats.cpuUsage)
-            )
-            .frame(width: 96)
+            ForEach(widgets, id: \.rawValue) { widget in
+                tile(for: widget)
+            }
+        }
+    }
 
-            TodayStatTile(
-                icon: "memorychip",
-                label: "RAM",
-                value: "\(Int(stats.ramPercent))%",
-                progress: stats.ramPercent / 100,
-                tint: tint(for: stats.ramPercent)
-            )
-            .frame(width: 96)
-
-            TodayInlineCalendarTile()
-                .frame(maxWidth: .infinity)
+    @ViewBuilder
+    private func tile(for widget: PinnedWidget) -> some View {
+        switch widget {
+        case .ram:
+            TodayStatTile(icon: "memorychip", label: "RAM",
+                          value: "\(Int(stats.ramPercent))%",
+                          progress: stats.ramPercent / 100,
+                          tint: tint(for: stats.ramPercent))
+        case .disk:
+            TodayStatTile(icon: "internaldrive", label: "DISK",
+                          value: "\(Int(stats.diskPercent))%",
+                          progress: stats.diskPercent / 100,
+                          tint: tint(for: stats.diskPercent))
+        case .network:
+            TodayNetworkTile(stats: stats)
+        case .uptime:
+            TodayStatTile(icon: "clock", label: "UPTIME",
+                          value: stats.uptimeString,
+                          progress: 0, tint: .cyan)
+        case .processes:
+            TodayStatTile(icon: "list.number", label: "PROCS",
+                          value: "\(stats.processCount)",
+                          progress: 0, tint: .purple)
+        default:
+            EmptyView()
         }
     }
 
@@ -272,6 +308,65 @@ private struct TodayStatsRow: View {
         if pct > 85 { return .red }
         if pct > 65 { return .yellow }
         return .green
+    }
+}
+
+private struct TodayInlineCalendarCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("CALENDAR")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(0.5)
+            }
+            MiniCalendarView(compact: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .glassCell(cornerRadius: 16)
+    }
+}
+
+private struct TodayNetworkTile: View {
+    @ObservedObject var stats: SystemStatsMonitor
+
+    private func fmt(_ bytes: Double) -> String {
+        if bytes > 1_000_000 { return String(format: "%.1fM", bytes / 1_000_000) }
+        if bytes > 1_000 { return String(format: "%.0fK", bytes / 1_000) }
+        return "0"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "network")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("NET")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(0.5)
+            }
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.up").font(.system(size: 8))
+                Text(fmt(stats.netUp)).font(.system(size: 11, weight: .semibold, design: .monospaced))
+            }
+            .foregroundStyle(.white)
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.down").font(.system(size: 8))
+                Text(fmt(stats.netDown)).font(.system(size: 11, weight: .semibold, design: .monospaced))
+            }
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .glassCell(cornerRadius: 16)
     }
 }
 
@@ -315,29 +410,7 @@ private struct TodayStatTile: View {
     }
 }
 
-/// Calendar tile sized to occupy two slots in the stats row. Shows the
-/// month/year header on top and a horizontal day strip that auto-scrolls
-/// today into view.
-private struct TodayInlineCalendarTile: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("CALENDAR")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .tracking(0.5)
-            }
-            MiniCalendarView(compact: true)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .glassCell(cornerRadius: 16)
-    }
-}
+
 
 // MARK: - Icon Action Button (icon only, label on hover)
 

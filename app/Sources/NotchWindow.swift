@@ -141,7 +141,13 @@ class NotchWindowController: NSObject {
         }
 
         let shellView = NotchShellView(viewModel: viewModel)
-        panel.contentView = NSHostingView(rootView: shellView)
+        let hosting = NSHostingView(rootView: shellView)
+        // Disable automatic window resizing — the panel frame is managed
+        // entirely by NotchWindowController. Without this, NSHostingView
+        // calls updateAnimatedWindowSize during layout causing re-entrant
+        // constraint updates and an EXC_BREAKPOINT crash on macOS 26.
+        hosting.sizingOptions = []
+        panel.contentView = hosting
         activeScreenUUID = uuid
     }
 

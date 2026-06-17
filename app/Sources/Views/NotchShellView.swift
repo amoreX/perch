@@ -141,8 +141,32 @@ struct NotchShellView: View {
             style: .continuous
         )
 
-        // Pitch black, always.
-        return shape.fill(Color.black)
+        // Gradient stops: solid black at top (physical notch), dissolving
+        // to transparent at the bottom when expanded so the blur layer shows.
+        let solidEnd: Double = expanded ? 0.18 : 1.0
+        let fadeEnd:  Double = expanded ? 0.62 : 1.0
+        let clearEnd: Double = expanded ? 1.00 : 1.0
+
+        return ZStack {
+            // NSVisualEffectView blur — stable alternative to glassEffect on
+            // the root shape, avoids constraint-cycle crashes during CA commits.
+            NotchBlurView()
+                .clipShape(shape)
+
+            // Black-to-transparent gradient overlay
+            shape.fill(
+                LinearGradient(
+                    stops: [
+                        .init(color: .black,                    location: 0),
+                        .init(color: .black,                    location: solidEnd),
+                        .init(color: Color.black.opacity(0.68), location: fadeEnd),
+                        .init(color: .clear,                    location: clearEnd),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        }
     }
 
     // Shoulders flank the dropdown panel's top-left and top-right corners.
@@ -725,12 +749,8 @@ struct SettingsPanel: View {
     @ObservedObject var viewModel: NotchViewModel
 
     var body: some View {
-        // Plain ScrollView + VStack — Form/.formStyle(.grouped) added its
-        // own wrapper insets that didn't line up with the rest of the UI.
-        // Each section is a .contentCard so the visual rhythm matches Home
-        // and Agents pages.
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 14) {
                 section(title: "Chat") {
                     settingsToggle("Open chat on send", $viewModel.settings.openChatOnSend)
                     settingsToggle("Restore last view", $viewModel.settings.restoreLastView)
@@ -745,7 +765,7 @@ struct SettingsPanel: View {
                     }
                 }
 
-                section(title: "Widgets", footer: "Pin up to 3 widgets to your overview.") {
+                section(title: "Widgets", footer: "Toggle which widgets appear in the expanded notch.") {
                     ForEach(PinnedWidget.allCases, id: \.rawValue) { widget in
                         widgetToggleRow(widget)
                     }
@@ -756,18 +776,48 @@ struct SettingsPanel: View {
                     settingsToggle("Compact rows", $viewModel.settings.compactAgentRows)
                 }
 
-                section(title: "Integrations") {
-                    AppConnectionRow(viewModel: viewModel, appType: "gmail", displayName: "Gmail", icon: "envelope.fill")
-                    AppConnectionRow(viewModel: viewModel, appType: "googlecalendar", displayName: "Google Calendar", icon: "calendar")
-                    AppConnectionRow(viewModel: viewModel, appType: "googledocs", displayName: "Google Docs", icon: "doc.text.fill")
-                    AppConnectionRow(viewModel: viewModel, appType: "github", displayName: "GitHub", icon: "chevron.left.forwardslash.chevron.right")
-                }
+                integrationsSection
             }
             .padding(.bottom, 14)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .scrollIndicators(.never)
         .smartScrollFade(28)
-        .onAppear { viewModel.loadProviderConfigs() }
+        .onAppear {
+            viewModel.loadProviderConfigs()
+            for app in ["gmail", "googlecalendar", "googledocs", "github"] {
+                viewModel.checkAppStatus(app)
+            }
+        }
+    }
+
+    // MARK: - Integrations grid
+
+    private var integrationsSection: some View {
+        let apps: [(type: String, name: String, icon: String)] = [
+            ("gmail",          "Gmail",    "envelope.fill"),
+            ("googlecalendar", "Calendar", "calendar"),
+            ("googledocs",     "Docs",     "doc.text.fill"),
+            ("github",         "GitHub",   "chevron.left.forwardslash.chevron.right"),
+        ]
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Integrations")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .tracking(0.5)
+                .padding(.leading, 4)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(apps, id: \.type) { app in
+                    AppConnectionTile(
+                        viewModel: viewModel,
+                        appType: app.type,
+                        displayName: app.name,
+                        icon: app.icon
+                    )
+                }
+            }
+        }
     }
 
     // MARK: - Section primitives
@@ -782,16 +832,15 @@ struct SettingsPanel: View {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .textCase(.uppercase)
                 .tracking(0.5)
                 .padding(.leading, 4)
 
             VStack(alignment: .leading, spacing: 8) {
                 content()
             }
-            .frame(maxWidth: .infinity, alignment: .leading) // ALL cards fill
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .contentCard(cornerRadius: 20)                   // outer=32, padding=12 → inner≥20
+            .contentCard(cornerRadius: 20)
 
             if let footer = footer {
                 Text(footer)
@@ -804,8 +853,7 @@ struct SettingsPanel: View {
 
     private func settingsToggle(_ label: String, _ binding: Binding<Bool>) -> some View {
         Toggle(isOn: binding) {
-            Text(label)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(label).frame(maxWidth: .infinity, alignment: .leading)
         }
         .toggleStyle(.switch)
         .controlSize(.small)
@@ -820,16 +868,10 @@ struct SettingsPanel: View {
             Label("Default", systemImage: "server.rack")
             Spacer()
             if isUsingDefault {
-                Text("Active")
-                    .foregroundStyle(.green)
-                    .font(.callout)
+                Text("Active").foregroundStyle(.green).font(.callout)
             } else {
-                Button("Use") {
-                    viewModel.deactivateAllProviders()
-                }
-                .buttonStyle(.glass)
-                .controlSize(.small)
-                .tint(.clear)
+                Button("Use") { viewModel.deactivateAllProviders() }
+                    .buttonStyle(.glass).controlSize(.small).tint(.clear)
             }
         }
     }
@@ -839,15 +881,16 @@ struct SettingsPanel: View {
     @ViewBuilder
     private func widgetToggleRow(_ widget: PinnedWidget) -> some View {
         let isPinned = viewModel.settings.pinnedWidgets.contains(widget)
-        let atMax = viewModel.settings.pinnedWidgets.count >= 3
         Toggle(isOn: Binding(
             get: { isPinned },
             set: { newValue in
                 withAnimation(DN.transition) {
-                    if !newValue {
+                    if newValue {
+                        if !viewModel.settings.pinnedWidgets.contains(widget) {
+                            viewModel.settings.pinnedWidgets.append(widget)
+                        }
+                    } else {
                         viewModel.settings.pinnedWidgets.removeAll { $0 == widget }
-                    } else if viewModel.settings.pinnedWidgets.count < 3 {
-                        viewModel.settings.pinnedWidgets.append(widget)
                     }
                 }
             }
@@ -858,7 +901,6 @@ struct SettingsPanel: View {
         .toggleStyle(.switch)
         .controlSize(.small)
         .tint(DN.accent)
-        .disabled(!isPinned && atMax)
     }
 }
 
@@ -1005,47 +1047,116 @@ struct ProviderRow: View {
     }
 }
 
-// MARK: - App connection row (OAuth)
+// MARK: - App connection tile (OAuth grid cell)
 
-struct AppConnectionRow: View {
+struct AppConnectionTile: View {
     @ObservedObject var viewModel: NotchViewModel
     let appType: String
     let displayName: String
     let icon: String
+
+    @State private var isHovering = false
 
     private var isConnected: Bool { viewModel.appConnected[appType] ?? false }
     private var isLoading: Bool { viewModel.appLoading[appType] ?? false }
     private var error: String? { viewModel.appError[appType] ?? nil }
 
     var body: some View {
-        HStack {
-            Label(displayName, systemImage: icon)
-            Spacer()
-            if isLoading {
-                ProgressView().controlSize(.small)
-            } else if isConnected {
-                Text("Connected")
-                    .foregroundStyle(.green)
-                    .font(.callout)
-                Button("Disconnect") { viewModel.disconnectApp(appType) }
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
-                    .tint(.clear)
-            } else {
-                if error != nil {
-                    Button("Reset") { viewModel.resetApp(appType) }
-                        .buttonStyle(.glass)
-                        .controlSize(.small)
-                        .tint(.clear)
-                }
-                Button("Connect") { viewModel.connectApp(appType) }
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.small)
-                    .tint(.accentColor)
+        VStack(alignment: .leading, spacing: 0) {
+            // Icon + status dot
+            HStack(alignment: .top) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(isConnected ? Color.white : Color.secondary)
+                Spacer()
+                statusDot
             }
+            .padding(.bottom, 8)
+
+            // Name
+            Text(displayName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isConnected ? Color.white : Color.secondary)
+                .lineLimit(1)
+
+            Spacer(minLength: 6)
+
+            // Action button
+            actionButton
         }
-        .onAppear { viewModel.checkAppStatus(appType) }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 90, alignment: .topLeading)
+        .glassEffect(
+            isConnected
+                ? Glass.regular.tint(Color.green.opacity(0.15))
+                : (error != nil ? Glass.regular.tint(Color.orange.opacity(0.12)) : Glass.regular),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
+        .animation(DN.transition, value: isConnected)
+        .animation(DN.transition, value: isLoading)
     }
+
+    @ViewBuilder
+    private var statusDot: some View {
+        if isLoading {
+            ProgressView().controlSize(.mini).tint(.white)
+        } else if isConnected {
+            Circle().fill(Color.green).frame(width: 7, height: 7)
+        } else if error != nil {
+            Circle().fill(Color.orange).frame(width: 7, height: 7)
+        }
+    }
+
+    @ViewBuilder
+    private var actionButton: some View {
+        if isLoading {
+            Text("Connecting…")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        } else if isConnected {
+            Button("Disconnect") { viewModel.disconnectApp(appType) }
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .frame(height: 22)
+                .glassEffect(.regular, in: .capsule)
+                .buttonStyle(.plain)
+        } else {
+            Button(error != nil ? "Retry" : "Connect") {
+                viewModel.resetApp(appType)
+                viewModel.connectApp(appType)
+            }
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .frame(height: 22)
+            .glassEffect(
+                error != nil
+                    ? Glass.regular.tint(Color.orange.opacity(0.4))
+                    : Glass.regular.tint(DN.activeAccent),
+                in: .capsule
+            )
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+// MARK: - Notch blur background (NSVisualEffectView wrapper)
+//
+// Using NSVisualEffectView instead of glassEffect on the root shape avoids
+// the EXC_BREAKPOINT crash caused by applying glassEffect inside a
+// compositingGroup during CA transaction commits on macOS 26.
+
+private struct NotchBlurView: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = .fullScreenUI
+        v.blendingMode = .behindWindow
+        v.state = .active
+        v.isEmphasized = false
+        return v
+    }
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
 // MARK: - Color hex helper
