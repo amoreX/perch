@@ -147,6 +147,10 @@ class NotchWindowController: NSObject {
         // calls updateAnimatedWindowSize during layout causing re-entrant
         // constraint updates and an EXC_BREAKPOINT crash on macOS 26.
         hosting.sizingOptions = []
+        // Ensure the hosting view's own CALayer is fully transparent so
+        // NSVisualEffectView / glassEffect can composite against the desktop.
+        hosting.wantsLayer = true
+        hosting.layer?.backgroundColor = NSColor.clear.cgColor
         panel.contentView = hosting
         activeScreenUUID = uuid
     }

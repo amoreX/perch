@@ -22,30 +22,42 @@ enum PinnedWidget: String, CaseIterable, Codable {
     case network = "network"
     case uptime = "uptime"
     case processes = "processes"
+    case scheduledTasks = "scheduledTasks"
 
     var label: String {
         switch self {
-        case .calendar: return "Calendar"
-        case .music: return "Music Player"
-        case .ram: return "RAM Usage"
-        case .disk: return "Disk Usage"
-        case .network: return "Network"
-        case .uptime: return "Uptime"
-        case .processes: return "Processes"
+        case .calendar:       return "Calendar"
+        case .music:          return "Music Player"
+        case .ram:            return "RAM Usage"
+        case .disk:           return "Disk Usage"
+        case .network:        return "Network"
+        case .uptime:         return "Uptime"
+        case .processes:      return "Processes"
+        case .scheduledTasks: return "Scheduled Tasks"
         }
     }
 
     var icon: String {
         switch self {
-        case .calendar: return "calendar"
-        case .music: return "music.note"
-        case .ram: return "memorychip"
-        case .disk: return "internaldrive"
-        case .network: return "network"
-        case .uptime: return "clock"
-        case .processes: return "list.number"
+        case .calendar:       return "calendar"
+        case .music:          return "music.note"
+        case .ram:            return "memorychip"
+        case .disk:           return "internaldrive"
+        case .network:        return "network"
+        case .uptime:         return "clock"
+        case .processes:      return "list.number"
+        case .scheduledTasks: return "clock.arrow.2.circlepath"
         }
     }
+
+    var gridHeight: CGFloat {
+        switch self {
+        case .music, .scheduledTasks: return 104
+        case .calendar:               return 96
+        default:                      return 88
+        }
+    }
+
 }
 
 class NotchSettings: ObservableObject {
@@ -70,23 +82,16 @@ class NotchSettings: ObservableObject {
     var musicSize: MusicSize { pinnedWidgets.count > 1 ? .mini : .big }
 
     /// Height of the expanded content area (below the top-bar) for the Today view.
-    /// Stats-type widgets (ram/disk/network/uptime/processes) are grouped into a
-    /// single row, so they only add one row's height regardless of how many are pinned.
+    /// Widgets render in a two-column grid, so each row contributes the height
+    /// of its tallest widget.
     var todayExpandedH: CGFloat {
         let spacing: CGFloat = 10
         var h: CGFloat = 72 + spacing  // clock card + gap
 
-        let statsTypes: [PinnedWidget] = [.ram, .disk, .network, .uptime, .processes]
-        let hasStatRow = pinnedWidgets.contains { statsTypes.contains($0) }
-
-        for w in pinnedWidgets {
-            switch w {
-            case .music:    h += 96 + spacing
-            case .calendar: h += 88 + spacing
-            default: break  // counted below as a single row
-            }
+        for rowStart in stride(from: 0, to: pinnedWidgets.count, by: 2) {
+            let row = pinnedWidgets[rowStart..<min(rowStart + 2, pinnedWidgets.count)]
+            h += (row.map(\.gridHeight).max() ?? 0) + spacing
         }
-        if hasStatRow { h += 80 + spacing }
 
         h += 46 + 10  // composer + bottom padding
         return h
@@ -622,6 +627,7 @@ class NotchViewModel: ObservableObject {
     func checkAppStatus(_ appType: String) {
         guard let auth = authManager else { return }
         appLoading[appType] = true
+        appError[appType] = nil          // clear any stale error from a previous connect attempt
         Task {
             await auth.ensureValidToken()
             guard let token = auth.accessToken else {

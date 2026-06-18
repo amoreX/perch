@@ -20,65 +20,191 @@ struct NotchContentView: View {
 }
 
 // MARK: - Today Page
-//
-// Clock card is always shown. Each pinned widget renders its own card.
-// Stats-type widgets (ram/disk/network/uptime/processes) share one row.
-// Composer pill is always shown at the bottom.
-// Height adapts via NotchSettings.todayExpandedH.
 
 private struct TodayPage: View {
     @ObservedObject var viewModel: NotchViewModel
     @State private var composerText: String = ""
     @FocusState private var composerFocused: Bool
 
+    @State private var draggingWidget: PinnedWidget? = nil
+    @State private var dragLocation: CGPoint? = nil
+    @State private var dragGrabOffset: CGSize = .zero
+    @State private var widgetFrames: [PinnedWidget: CGRect] = [:]
+
     private let statsTypes: [PinnedWidget] = [.ram, .disk, .network, .uptime, .processes]
+    private let spacing: CGFloat = 10
+
     private var pinned: [PinnedWidget] { viewModel.settings.pinnedWidgets }
-    private var statWidgets: [PinnedWidget] { pinned.filter { statsTypes.contains($0) } }
+    private var gridColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: spacing),
+            GridItem(.flexible(), spacing: spacing),
+        ]
+    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-          VStack(spacing: 10) {
-            // Always: clock
-            TodayClockCard(viewModel: viewModel)
-                .frame(height: 72)
+            VStack(spacing: spacing) {
+                TodayClockCard(viewModel: viewModel)
+                    .frame(height: 72)
 
-            // Each pinned widget in order
-            ForEach(pinned, id: \.rawValue) { widget in
-                switch widget {
-                case .music:
-                    TodayMusicCard(monitor: viewModel.nowPlaying)
-                        .frame(height: 96)
-                case .calendar:
-                    TodayInlineCalendarCard()
-                        .frame(height: 88)
-                default:
-                    EmptyView() // stats handled below
-                }
+                widgetGrid
+
+                composer
             }
-
-            // All stat-type widgets in one shared row
-            if !statWidgets.isEmpty {
-                TodayStatsRow(stats: viewModel.statsMonitor, widgets: statWidgets)
-                    .frame(height: 80)
-            }
-
-            // Always: composer
-            composer
-          }
-          .padding(.bottom, 4)
+            .padding(.bottom, 4)
         }
         .scrollIndicators(.never)
+        .smartScrollFade(40)
         .frame(maxWidth: .infinity, alignment: .top)
-        .onChange(of: viewModel.shouldFocusChatInput) { _, shouldFocus in
-            if shouldFocus {
-                composerFocused = true
-                viewModel.shouldFocusChatInput = false
+        .onChange(of: viewModel.shouldFocusChatInput) { _, v in
+            if v { composerFocused = true; viewModel.shouldFocusChatInput = false }
+        }
+        .onChange(of: composerFocused) { _, f in viewModel.isChatInputActive = f }
+    }
+
+    // MARK: - Widget grid
+
+    private var widgetGrid: some View {
+        LazyVGrid(columns: gridColumns, spacing: spacing) {
+            ForEach(pinned, id: \.self) { widget in
+                widgetGridCell(widget)
             }
         }
-        .onChange(of: composerFocused) { _, focused in
-            viewModel.isChatInputActive = focused
+        .coordinateSpace(name: WidgetGridLayout.coordinateSpaceName)
+        .overlay(alignment: .topLeading) {
+            floatingWidget
+        }
+        .onPreferenceChange(WidgetFramePreferenceKey.self) { frames in
+            widgetFrames = frames
+        }
+        .animation(DN.transition, value: pinned)
+    }
+
+    private func widgetGridCell(_ widget: PinnedWidget) -> some View {
+        let isDragging = draggingWidget == widget
+        return widgetCard(widget)
+            .frame(maxWidth: .infinity)
+            .frame(height: widget.gridHeight)
+            .opacity(isDragging ? 0.18 : 1)
+            .scaleEffect(isDragging ? 0.96 : 1)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: WidgetFramePreferenceKey.self,
+                        value: [widget: proxy.frame(in: .named(WidgetGridLayout.coordinateSpaceName))]
+                    )
+                }
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .simultaneousGesture(widgetDragGesture(for: widget))
+            .animation(DN.transition, value: draggingWidget)
+    }
+
+    @ViewBuilder
+    private var floatingWidget: some View {
+        if let widget = draggingWidget,
+           let location = dragLocation,
+           let frame = widgetFrames[widget] {
+            let position = CGPoint(
+                x: location.x - dragGrabOffset.width,
+                y: location.y - dragGrabOffset.height
+            )
+
+            widgetCard(widget)
+                .frame(width: frame.width, height: frame.height)
+                .scaleEffect(1.03)
+                .shadow(color: .black.opacity(0.45), radius: 18, y: 12)
+                .position(position)
+                .allowsHitTesting(false)
+                .zIndex(100)
+                .transition(.opacity)
         }
     }
+
+    @ViewBuilder
+    private func widgetCard(_ widget: PinnedWidget) -> some View {
+        if statsTypes.contains(widget) {
+            TodayStatsRow(stats: viewModel.statsMonitor, widgets: [widget])
+        } else {
+            widgetContent(widget)
+        }
+    }
+
+    private func widgetDragGesture(for widget: PinnedWidget) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.28, maximumDistance: 8)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(WidgetGridLayout.coordinateSpaceName)))
+            .onChanged { value in
+                switch value {
+                case .second(true, let drag?):
+                    updateDrag(widget: widget, value: drag)
+                default:
+                    break
+                }
+            }
+            .onEnded { _ in
+                finishDrag()
+            }
+    }
+
+    private func updateDrag(widget: PinnedWidget, value: DragGesture.Value) {
+        guard draggingWidget == nil || draggingWidget == widget,
+              let frame = widgetFrames[widget] else { return }
+
+        if draggingWidget == nil {
+            dragGrabOffset = CGSize(
+                width: value.startLocation.x - frame.midX,
+                height: value.startLocation.y - frame.midY
+            )
+            withAnimation(DN.transition) {
+                draggingWidget = widget
+            }
+        }
+
+        dragLocation = value.location
+        attemptGridReorder(widget, at: value.location)
+    }
+
+    private func attemptGridReorder(_ widget: PinnedWidget, at location: CGPoint) {
+        let current = viewModel.settings.pinnedWidgets
+        guard let from = current.firstIndex(of: widget) else { return }
+
+        let itemFrames = current.enumerated().compactMap { index, widget in
+            widgetFrames[widget].map { WidgetGridItemFrame(index: index, frame: $0) }
+        }
+        guard let target = WidgetGridLayout.targetIndex(at: location, in: itemFrames),
+              target != from else { return }
+
+        withAnimation(DN.transition) {
+            viewModel.settings.pinnedWidgets = WidgetGridLayout.reorder(
+                current,
+                movingFrom: from,
+                to: target
+            )
+        }
+    }
+
+    private func finishDrag() {
+        withAnimation(DN.transition) {
+            draggingWidget = nil
+            dragLocation = nil
+            dragGrabOffset = .zero
+        }
+    }
+
+    // MARK: - Widget content
+
+    @ViewBuilder
+    private func widgetContent(_ widget: PinnedWidget) -> some View {
+        switch widget {
+        case .music:          TodayMusicCard(monitor: viewModel.nowPlaying)
+        case .calendar:       TodayInlineCalendarCard()
+        case .scheduledTasks: ScheduledTasksTodayCard(viewModel: viewModel)
+        default:              EmptyView()
+        }
+    }
+
+    // MARK: - Composer
 
     private var composer: some View {
         HStack(spacing: 10) {
@@ -88,7 +214,6 @@ private struct TodayPage: View {
                 .foregroundStyle(.white)
                 .focused($composerFocused)
                 .onSubmit { submit() }
-
             sendButton
         }
         .padding(.horizontal, 14)
@@ -104,10 +229,7 @@ private struct TodayPage: View {
             .font(.system(size: 11, weight: .bold))
             .foregroundStyle(.white)
             .frame(width: 24, height: 24)
-            .glassEffect(
-                enabled ? Glass.regular.tint(DN.activeAccent) : Glass.regular,
-                in: .circle
-            )
+            .glassEffect(enabled ? Glass.regular.tint(DN.activeAccent) : Glass.regular, in: .circle)
             .opacity(enabled ? 1 : 0.55)
             .contentShape(.circle)
             .onTapGesture { if enabled { submit() } }
@@ -119,6 +241,14 @@ private struct TodayPage: View {
         composerText = ""
         composerFocused = false
         viewModel.sendChat(message: trimmed)
+    }
+}
+
+private struct WidgetFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [PinnedWidget: CGRect] = [:]
+
+    static func reduce(value: inout [PinnedWidget: CGRect], nextValue: () -> [PinnedWidget: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
@@ -259,6 +389,67 @@ private struct TodayMusicCard: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Scheduled Tasks Today Card
+
+private struct ScheduledTasksTodayCard: View {
+    @ObservedObject var viewModel: NotchViewModel
+
+    private var enabled: [ScheduledTask] { viewModel.scheduledTasks.filter { $0.enabled }.prefix(4).map { $0 } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 5) {
+                Image(systemName: "clock.arrow.2.circlepath")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(DN.warning)
+                Text("SCHEDULED")
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(viewModel.scheduledTasks.filter { $0.enabled }.count)")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+
+            if enabled.isEmpty {
+                Text("No active tasks")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(enabled) { task in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(task.lastStatus == "failed" ? DN.accent : DN.warning)
+                                .frame(width: 4, height: 4)
+                            Text(task.name)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            Spacer()
+                            Text(task.scheduleHuman)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                    }
+                }
+                .padding(.bottom, 6)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCell(cornerRadius: 16)
+        .onAppear { viewModel.loadScheduledTasks() }
     }
 }
 
@@ -1144,29 +1335,15 @@ struct AgentsPage: View {
     @ObservedObject var viewModel: NotchViewModel
 
     private var activeTasks: [SubagentTask] { viewModel.tasks.filter { !$0.isFromHistory } }
-    private var hasContent: Bool {
-        !viewModel.agentMonitor.groupedAgents.isEmpty ||
-        !activeTasks.isEmpty ||
-        !viewModel.scheduledTasks.isEmpty
-    }
+    private var hasContent: Bool { !activeTasks.isEmpty || !viewModel.scheduledTasks.isEmpty }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 10) {
                 if hasContent {
-                    ForEach(viewModel.agentMonitor.groupedAgents) { group in                        AgentsGlassCard(
-                            group: group,
-                            showLiveState: viewModel.settings.showAgentLiveState,
-                            collapsedGroups: $viewModel.settings.collapsedGroups
-                        ) { agent in
-                            viewModel.agentMonitor.activateAgent(agent)
-                        }
-                    }
-
                     if !activeTasks.isEmpty {
                         ChatsGlassCard(tasks: activeTasks, viewModel: viewModel)
                     }
-
                     if !viewModel.scheduledTasks.isEmpty {
                         ScheduledGlassCard(viewModel: viewModel)
                     }
@@ -1182,13 +1359,13 @@ struct AgentsPage: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "sparkles")
+            Image(systemName: "bubble.left.and.clock")
                 .font(.system(size: 22, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text("No active agents")
+            Text("Nothing here yet")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
-            Text("Start a Claude Code session or\nschedule a task to see it here")
+            Text("Your chats and scheduled tasks\nwill appear here")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

@@ -908,7 +908,11 @@ struct OnboardingView: View {
         viewModel.settings.openChatOnSend = openChatOnSend
         viewModel.settings.keepOpenInChat = keepOpenInChat
         viewModel.settings.restoreLastView = restoreLastView
-        viewModel.settings.pinnedWidgets = Array(selectedWidgets).prefix(3).map { $0 }
+        viewModel.settings.pinnedWidgets = orderedSelectedWidgets.prefix(3).map { $0 }
+    }
+
+    private var orderedSelectedWidgets: [PinnedWidget] {
+        PinnedWidget.allCases.filter { selectedWidgets.contains($0) }
     }
 
     private var completionPayload: [String: Any] {
@@ -920,7 +924,7 @@ struct OnboardingView: View {
             "use_default_model": useDefaultModel,
             "selected_provider": selectedProvider,
             "connected_apps": appIntegrations.filter { viewModel.appConnected[$0.appType] == true }.map { $0.appType },
-            "pinned_widgets": selectedWidgets.map { $0.rawValue },
+            "pinned_widgets": orderedSelectedWidgets.map { $0.rawValue },
             "open_chat_on_send": openChatOnSend,
             "keep_open_in_chat": keepOpenInChat,
             "restore_last_view": restoreLastView,

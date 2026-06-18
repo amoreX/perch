@@ -99,15 +99,15 @@ struct NotchShellView: View {
         .overlay(alignment: .top) {
             shoulders
         }
-        // Drop shadow that ONLY falls below the notch — never above —
-        // because there's no space above the menu bar and a top-shadow
-        // creates a hairline at the screen edge.
-        .compositingGroup()
+        // Shadow below the expanded panel — no compositingGroup so glassEffect
+        // can composite against the desktop without triggering constraint cycles.
+        // A positive y-offset means the shadow falls downward; any top-bleed
+        // is hidden behind the physical notch / menu bar edge.
         .shadow(
-            color: Color.black.opacity(expanded ? 0.45 : 0),
-            radius: expanded ? 18 : 0,
+            color: Color.black.opacity(expanded ? 0.35 : 0),
+            radius: expanded ? 24 : 0,
             x: 0,
-            y: expanded ? 8 : 0
+            y: expanded ? 12 : 0
         )
         .onHover { hovering in
             viewModel.mouseInContent = hovering
@@ -141,32 +141,28 @@ struct NotchShellView: View {
             style: .continuous
         )
 
-        // Gradient stops: solid black at top (physical notch), dissolving
-        // to transparent at the bottom when expanded so the blur layer shows.
-        let solidEnd: Double = expanded ? 0.18 : 1.0
-        let fadeEnd:  Double = expanded ? 0.62 : 1.0
-        let clearEnd: Double = expanded ? 1.00 : 1.0
+        // Liquid glass base
+        let glass = Color.clear
+            .glassEffect(Glass.regular.tint(Color.black.opacity(0.18)), in: shape)
+            .clipShape(shape)
 
-        return ZStack {
-            // NSVisualEffectView blur — stable alternative to glassEffect on
-            // the root shape, avoids constraint-cycle crashes during CA commits.
-            NotchBlurView()
-                .clipShape(shape)
+        // Black-to-transparent gradient overlaid on top so the physical notch
+        // area stays solid black and dissolves into glass further down.
+        let gradientEnd: Double = expanded ? 0.22 : 1.0
+        let clearStart:  Double = expanded ? 0.48 : 1.0
 
-            // Black-to-transparent gradient overlay
-            shape.fill(
-                LinearGradient(
-                    stops: [
-                        .init(color: .black,                    location: 0),
-                        .init(color: .black,                    location: solidEnd),
-                        .init(color: Color.black.opacity(0.68), location: fadeEnd),
-                        .init(color: .clear,                    location: clearEnd),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+        return glass.overlay(
+            LinearGradient(
+                stops: [
+                    .init(color: .black,        location: 0),
+                    .init(color: .black,        location: gradientEnd),
+                    .init(color: .clear,        location: clearStart),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
             )
-        }
+            .clipShape(shape)
+        )
     }
 
     // Shoulders flank the dropdown panel's top-left and top-right corners.
@@ -765,7 +761,7 @@ struct SettingsPanel: View {
                     }
                 }
 
-                section(title: "Widgets", footer: "Toggle which widgets appear in the expanded notch.") {
+                section(title: "Widgets", footer: "Toggle Today widgets. Long-press a widget in Today to rearrange it.") {
                     ForEach(PinnedWidget.allCases, id: \.rawValue) { widget in
                         widgetToggleRow(widget)
                     }
