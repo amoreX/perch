@@ -366,7 +366,7 @@ struct StatsPanel: View {
             .padding(.bottom, 14)
         }
         .scrollIndicators(.never)
-        .smartScrollFade(28)
+        .smartScrollFade(28, bottomRadius: 28)
     }
 
     // MARK: - Tile builders
@@ -518,7 +518,7 @@ struct ProcessListPanel: View {
                 .padding(.bottom, 14)
             }
             .scrollIndicators(.never)
-            .smartScrollFade(28)
+            .smartScrollFade(28, bottomRadius: 28)
         }
         .onAppear { monitor.refreshProcesses() }
     }

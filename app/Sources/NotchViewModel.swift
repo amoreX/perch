@@ -51,11 +51,7 @@ enum PinnedWidget: String, CaseIterable, Codable {
     }
 
     var gridHeight: CGFloat {
-        switch self {
-        case .music, .scheduledTasks: return 104
-        case .calendar:               return 96
-        default:                      return 88
-        }
+        104
     }
 
 }

@@ -35,12 +35,6 @@ private struct TodayPage: View {
     private let spacing: CGFloat = 10
 
     private var pinned: [PinnedWidget] { viewModel.settings.pinnedWidgets }
-    private var gridColumns: [GridItem] {
-        [
-            GridItem(.flexible(), spacing: spacing),
-            GridItem(.flexible(), spacing: spacing),
-        ]
-    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -55,7 +49,7 @@ private struct TodayPage: View {
             .padding(.bottom, 4)
         }
         .scrollIndicators(.never)
-        .smartScrollFade(40)
+        .smartScrollFade(40, bottomRadius: 28)
         .frame(maxWidth: .infinity, alignment: .top)
         .onChange(of: viewModel.shouldFocusChatInput) { _, v in
             if v { composerFocused = true; viewModel.shouldFocusChatInput = false }
@@ -66,9 +60,19 @@ private struct TodayPage: View {
     // MARK: - Widget grid
 
     private var widgetGrid: some View {
-        LazyVGrid(columns: gridColumns, spacing: spacing) {
-            ForEach(pinned, id: \.self) { widget in
-                widgetGridCell(widget)
+        VStack(spacing: spacing) {
+            ForEach(widgetRows.indices, id: \.self) { rowIndex in
+                let row = widgetRows[rowIndex]
+                if row.count == 1, let widget = row.first {
+                    widgetGridCell(widget)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    HStack(alignment: .top, spacing: spacing) {
+                        ForEach(row, id: \.self) { widget in
+                            widgetGridCell(widget)
+                        }
+                    }
+                }
             }
         }
         .coordinateSpace(name: WidgetGridLayout.coordinateSpaceName)
@@ -79,6 +83,12 @@ private struct TodayPage: View {
             widgetFrames = frames
         }
         .animation(DN.transition, value: pinned)
+    }
+
+    private var widgetRows: [[PinnedWidget]] {
+        stride(from: 0, to: pinned.count, by: 2).map { start in
+            Array(pinned[start..<min(start + 2, pinned.count)])
+        }
     }
 
     private func widgetGridCell(_ widget: PinnedWidget) -> some View {

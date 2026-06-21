@@ -181,13 +181,14 @@ extension View {
     /// Smart edge fade for `ScrollView` — fades the top edge only while the
     /// content is scrolled away from the top, and the bottom edge only while
     /// it's away from the bottom. Snaps off cleanly at either extreme.
-    func smartScrollFade(_ length: CGFloat = 24) -> some View {
-        modifier(SmartScrollFade(length: length))
+    func smartScrollFade(_ length: CGFloat = 24, bottomRadius: CGFloat = 0) -> some View {
+        modifier(SmartScrollFade(length: length, bottomRadius: bottomRadius))
     }
 }
 
 private struct SmartScrollFade: ViewModifier {
     let length: CGFloat
+    let bottomRadius: CGFloat
     @State private var fadeTop: Bool = false
     @State private var fadeBottom: Bool = true
 
@@ -206,18 +207,31 @@ private struct SmartScrollFade: ViewModifier {
                     fadeBottom = new.bottom
                 }
             }
-            .mask(
-                LinearGradient(
-                    stops: [
-                        .init(color: fadeTop    ? .clear : .black, location: 0.0),
-                        .init(color: .black,                       location: Double(length) / 400),
-                        .init(color: .black,                       location: 1 - Double(length) / 400),
-                        .init(color: fadeBottom ? .clear : .black, location: 1.0)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+            .mask {
+                GeometryReader { proxy in
+                    let fade = min(max(length / max(proxy.size.height, 1), 0.02), 0.45)
+
+                    LinearGradient(
+                        stops: [
+                            .init(color: fadeTop    ? .clear : .black, location: 0.0),
+                            .init(color: .black,                       location: fade),
+                            .init(color: .black,                       location: 1 - fade),
+                            .init(color: fadeBottom ? .clear : .black, location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .clipShape(
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 0,
+                            bottomLeadingRadius: bottomRadius,
+                            bottomTrailingRadius: bottomRadius,
+                            topTrailingRadius: 0,
+                            style: .continuous
+                        )
+                    )
+                }
+            }
     }
 }
 

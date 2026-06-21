@@ -137,7 +137,7 @@ struct AgentChatView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 8)
             }
-            .smartScrollFade(20)
+            .smartScrollFade(20, bottomRadius: 24)
             .onReceive(NotificationCenter.default.publisher(for: NSScrollView.willStartLiveScrollNotification)) { _ in
                 autoScroll = false
             }

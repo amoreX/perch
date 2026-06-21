@@ -778,7 +778,7 @@ struct SettingsPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .scrollIndicators(.never)
-        .smartScrollFade(28)
+        .smartScrollFade(28, bottomRadius: 28)
         .onAppear {
             viewModel.loadProviderConfigs()
             for app in ["gmail", "googlecalendar", "googledocs", "github"] {
