@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents when working with code in this repository.
 
 ## Monorepo Structure
 
@@ -43,7 +43,7 @@ No unit tests in any package.
 
 ## App Architecture
 
-**macOS accessory app** (no dock icon) that overlays the MacBook notch area. MVVM with SwiftUI reactive bindings. Auth session persisted to `~/.danotch/auth.json`, settings to `~/.danotch/settings.json`. Chat threads/messages persisted to Supabase.
+**macOS accessory app** (no dock icon) that overlays the MacBook notch area. MVVM with SwiftUI reactive bindings. Auth session persisted to `~/.danotch/auth.json`, settings to `~/.danotch/settings.json`, and conversations to `~/.danotch/conversations.json`. Scheduled jobs, notifications, connected apps, and BYOK provider configs remain backend/Supabase-owned.
 
 ### Core Flow
 
@@ -57,7 +57,7 @@ No unit tests in any package.
 
 - **OnboardingView** (`Views/OnboardingView.swift`): Two-step onboarding flow shown in a centered borderless NSWindow (no close/min/max buttons, dark theme). Step 1: "DANOTCH / WELCOME TO THE NOTCH" + START button. Step 2: Signup form (name, email, password) or login form with toggle. On success calls `onComplete` closure which starts the notch. AppDelegate creates the window via `NSWindow` with `titlebarAppearsTransparent`, hidden standard buttons, `isMovableByWindowBackground`. Temporarily sets activation policy to `.regular` for focus, reverts to `.accessory` after.
 
-- **NotchViewModel**: Central state container. Processes WebSocket JSON events (`status`/`progress`/`done`/`connection_request`/`notification`/`peek_notification`) into model updates. Owns `AgentMonitor`, `NotchSettings`, `NowPlayingMonitor`, and `SystemStatsMonitor` (shared instance used by both StatsPanel and ProcessListPanel). Has `authManager` reference set by AppDelegate after auth. Forwards nested ObservableObjects via Combine. Runs clock timer (1s) and shimmer cycle timer (4s) for activity text rotation. `activityText()` prioritizes streaming text snippet (last 60 chars) over cycling activity steps. New tasks get shuffled goofy loading phrases (`goofyLoadingPhrases`) as activity steps. Has `sendChat(message:)` that POSTs to backend `/api/chat` with Bearer token and `thread_id`, optimistically creates a task (navigates to chat if `openChatOnSend`), captures `thread_id` from response for follow-ups. New tasks show "New Chat" initially; backend generates title via `generateThreadTitle()` and pushes it via WebSocket status event with `title` field → app updates task description. Thread history: `loadThreadHistory()` fetches `GET /api/threads`, `loadThread(threadId)` fetches messages and creates a SubagentTask with `isFromHistory=true` (hidden from recents). Sending a follow-up in a history thread flips `isFromHistory=false` (promotes to recents). `activeTasks` computed property filters out history tasks for UI display. Scheduled tasks: `loadScheduledTasks()` fetches `GET /api/scheduled`, `toggleScheduledTask()` optimistic update + PATCH, `deleteScheduledTask()` optimistic remove + DELETE. Notifications: `loadNotifications()` fetches all, `loadUnreadCount()` on startup, `markNotificationRead(id)` marks individual, `markAllRead()` marks all. `processNotification()` handles silent WebSocket events. `processPeekNotification()` handles `peek_notification` events — soft peek (notch grows slightly, not full expand), shows `isPeeking` state with title + exclamation. Hover expands to show body + "VIEW ALL" link. Auto-dismisses after 4s, 2s after hover leaves. Both handlers insert into notifications array + increment badge + refresh scheduled tasks. Tracks `shouldFocusChatInput`, `isChatInputActive`. `lastViewBeforeCollapse` saved on `resetView()`, restored on expand if `restoreLastView` is enabled via `restoreOrResetView()`. **App connections**: `checkAppStatus()`, `connectApp()`, `disconnectApp()` call `/api/apps/{type}/status`, `/connect`, `/disconnect` for Composio OAuth. **BYOK providers**: `loadProviderConfigs()`, `saveProviderConfig()`, `verifyProviderKey()`, `deleteProviderConfig()`, `deactivateAllProviders()` manage `/api/provider` CRUD. **Connection requests**: processes inbound `connection_request` WebSocket events (app OAuth approval prompts), sends `connection_response` back via `wsSend`.
+- **NotchViewModel**: Central state container. Processes WebSocket JSON events (`status`/`progress`/`done`/`connection_request`/`notification`/`peek_notification`) into model updates. Owns `AgentMonitor`, `NotchSettings`, `NowPlayingMonitor`, `SystemStatsMonitor`, and `LocalConversationStore`. Chat history is local-only in `~/.danotch/conversations.json`: `loadThreadHistory()` restores saved conversations into visible chat rows, and `sendChat(message:)` sends `conversation_id`, `model_id`, and recent local `history` to backend `/api/chat`. The backend streams progress and title updates over WebSocket, but does not persist normal chat messages to Supabase. Scheduled tasks, notifications, app connections, and provider configs remain backend-owned. **BYOK providers**: `loadProviderConfigs()`, `saveProviderConfig()`, `activateProviderConfig()`, `verifyProviderKey()`, `deleteProviderConfig()`, and `deactivateAllProviders()` manage encrypted saved provider configs; activation/default switching is non-destructive. **Notifications**: both `notification` and `peek_notification` can trigger the soft notch peek, with deduped notification inserts. **Connection requests**: processes inbound `connection_request` WebSocket events and sends `connection_response` via `wsSend`.
 
 - **AgentMonitor** (`AgentMonitor.swift`): Standalone `ObservableObject` that scans for AI agent processes every 3s. Currently only displays Claude Code sessions (filtered because Cursor/Codex/Windsurf don't expose prompt data). Enriches each session with project name (from `~/.claude/sessions/{pid}.json` cwd), last user prompt (from conversation JSONL in `~/.claude/projects/`), and working directory (via `lsof`). Can activate the terminal app for a session via `NSWorkspace`. Provides `groupedAgents` computed property for grouped display.
 
@@ -83,7 +83,7 @@ let data = pipe.fileHandleForReading.readDataToEndOfFile()
 
 `NotchViewState` enum drives all navigation:
 - `.overview` → left column (time, date, pinned widgets) + right column (agents, scheduled tasks, chat input bar)
-- `.taskList` → full scrollable conversation list + thread history
+- `.taskList` → full scrollable local conversation list
 - `.agentChat(taskId)` → task detail with chat history, tool calls, connection request bubbles, draft cards
 - `.stats` → bento grid: CPU/RAM arc gauges with sparklines, network up/down with stepped graphs, disk ring, process count, uptime
 - `.processList` → sortable process table (by CPU/MEM/name) with app icons, expandable rows, force-quit capability
@@ -124,7 +124,7 @@ NotchShellView (root: notch shape, top bar tabs, dot grid background)
     │       ├── AgentRow (WebSocket task rows with status dot, activity text)
     │       ├── ScheduledTasksSection (HOME tab only, collapsible, clock icon, yellow accent)
     │       │   └── ScheduledTaskRow (expandable: status dot, name, schedule, run count, last output as markdown, hover: pause/delete)
-    │       └── threadHistory (HISTORY section in AGENTS tab: past threads from Supabase, threadRow with relative dates)
+    │       └── local conversation history (restored from `~/.danotch/conversations.json`)
     ├── AgentChatView (chat header/back, auto-scrolling messages)
     │   ├── StreamingTextView (live token rendering)
     │   ├── MarkdownView (custom block/inline markdown parser)
@@ -142,8 +142,8 @@ NotchShellView (root: notch shape, top bar tabs, dot grid background)
         ├── SettingsPickerRow (segmented picker for enum options)
         ├── SettingsSliderRow (slider with percentage label)
         ├── SettingsColorRow (color dot presets)
-        ├── DefaultProviderRow (use server-side default provider)
-        ├── ProviderRow (BYOK forms: provider type, API key, model, verify/save/delete)
+        ├── DefaultProviderRow (use server-side default provider without deleting saved BYOK keys)
+        ├── ProviderRow (BYOK forms: provider type, API key, model, verify/save/use/delete)
         └── AppConnectionRow (OAuth connect/disconnect for Gmail, Calendar, Docs, GitHub)
 ```
 
@@ -218,7 +218,7 @@ NotchShellView (root: notch shape, top bar tabs, dot grid background)
 - **AgentGroup**: id, type, agents array — with computed `runningCount`, `totalCpu`, `totalMem`
 - **AgentType**: claudeCode, cursor, codex, windsurf — each with `icon`, `brandColor`, `rawValue` display name
 - **AgentStatus**: running (warning color), idle (disabled color)
-- **SubagentTask**: id, task, description, status, toolCallsCount, streamingText, chatHistory, currentToolName, threadId, isFromHistory — used for WebSocket-driven tasks and loaded DB threads. `threadId` links to Supabase thread for follow-ups. `isFromHistory` = true for loaded threads (hidden from recents until user sends a message)
+- **SubagentTask**: id, task, description, status, toolCallsCount, streamingText, chatHistory, currentToolName, threadId, isFromHistory — used for WebSocket-driven tasks and locally restored conversations. `threadId` is now a local conversation id for follow-up context; conversations are not persisted to Supabase.
 - **TaskStatus**: pending, running, completed, failed, cancelled, awaitingApproval
 - **ScheduledTask**: id, name, prompt, taskType, scheduleHuman, enabled, lastRunAt, nextRunAt, runCount, lastStatus, lastResultSummary, notifyUser — loaded from `GET /api/scheduled`, displayed on HOME tab. Expandable to show last output as markdown. Bell icon shown for `notifyUser=true` tasks
 - **ChatMessage**: id, role, content, toolName?, toolInput?, toolOutput?, draftCard?, timestamp — tool messages carry input summary and output preview for richer display. `role` includes `connection_request` for OAuth approval prompts
@@ -338,7 +338,7 @@ backend/src/
 ├── middleware/
 │   └── auth.ts         — requireAuth (via supabase.auth.getUser), extractUserId (optional auth)
 ├── agent/
-│   └── runner.ts       — runChat() with provider-agnostic tool-use loop, DB persistence, thread management
+│   └── runner.ts       — runChat() with provider-agnostic tool-use loop using app-supplied local history
 ├── tools/
 │   ├── scheduled.ts    — Anthropic tool definitions + handlers for scheduled task CRUD
 │   └── local.ts        — bash_execute (shell commands), web_search (DuckDuckGo), web_fetch (URL content)
@@ -364,11 +364,11 @@ backend/src/
 │   └── notch.ts        — NotchBridge WebSocket client to :7778, auto-reconnect, sendStatus/sendProgress/sendDone, requestConnection
 └── routes/
     ├── auth.ts         — Signup (admin.createUser + auto-login), login, refresh, /me
-    ├── tasks.ts        — Chat/agent endpoints (auth optional), thread CRUD (auth required)
+    ├── tasks.ts        — Chat/agent endpoints (auth optional; conversations are app-local)
     ├── scheduled.ts    — Scheduled task REST CRUD + run-now endpoint
     ├── notifications.ts — Notification list, unread count, mark read, delete all
     ├── apps.ts         — Per-app Composio OAuth/connect routes (/api/apps/:appType/*)
-    └── provider.ts     — BYOK provider CRUD + verify (/api/provider)
+    └── provider.ts     — BYOK provider CRUD, verify, model listing, activation (/api/provider)
 ```
 
 ### Auth
@@ -390,9 +390,6 @@ backend/src/
 | `POST` | `/api/chat` | Optional | LLM conversation (with tool use if authed), persists to DB |
 | `GET` | `/api/tasks` | No | List in-memory tasks |
 | `GET` | `/api/tasks/:id` | No | Get specific in-memory task |
-| `GET` | `/api/threads` | Yes | List conversation threads from DB |
-| `GET` | `/api/threads/:id` | Yes | Get thread messages from DB |
-| `DELETE` | `/api/threads/:id` | Yes | Delete thread + messages |
 | `GET` | `/api/scheduled` | Yes | List user's scheduled tasks |
 | `PATCH` | `/api/scheduled/:id` | Yes | Update scheduled task (toggle, edit) |
 | `DELETE` | `/api/scheduled/:id` | Yes | Delete scheduled task |
@@ -410,6 +407,9 @@ backend/src/
 | `GET` | `/api/provider` | Yes | List BYOK provider configs (no raw keys) |
 | `POST` | `/api/provider` | Yes | Upsert active provider; deactivates others; encrypts API key |
 | `POST` | `/api/provider/verify` | Yes | Test call with raw API key; may set `verified_at` |
+| `POST` | `/api/provider/activate` | Yes | Activate an existing saved provider without re-entering its key |
+| `POST` | `/api/provider/default` | Yes | Use server default provider without deleting saved BYOK keys |
+| `GET` | `/api/provider/models` | Yes | List available models for the active provider |
 | `DELETE` | `/api/provider` | Yes | Delete provider config(s) |
 
 `appType` values: `gmail`, `googlecalendar`, `googledocs`, `github`.
@@ -428,6 +428,8 @@ Multi-provider LLM support via `providers/` directory. Users can bring their own
 **Key encryption**: AES-256-GCM via `PROVIDER_KEY_SECRET` env var. Keys encrypted before DB storage, decrypted on use.
 
 **Default BYOK models**: anthropic → `claude-sonnet-4-6`, openai → `gpt-5`, openrouter → `anthropic/claude-sonnet-4-6`.
+
+**Provider switching**: saving a provider encrypts and stores the key, deactivates other providers, and marks that provider active. Saved inactive providers can be reactivated via `POST /api/provider/activate` without re-entering the key. `POST /api/provider/default` marks all saved providers inactive so the server fallback is used while preserving saved BYOK rows. `DELETE /api/provider` is the destructive path for removing saved keys.
 
 ### Composio App Integrations
 
@@ -450,7 +452,7 @@ Third-party app access via Composio SDK. OAuth-based connections managed per-use
 
 Provider-agnostic execution in `runner.ts`:
 
-- **`runChat(message, notch, { sessionId?, userId?, threadId? })`** — Uses `getProviderForUser(userId)` or `getFallbackProvider()` for LLM calls. Provider-agnostic streaming with **tool-use loop** (max 5 iterations). Streams text tokens, handles `tool_use` blocks by executing tools and sending results back. Uses `CHAT_SYSTEM_PROMPT`. DB persistence: user message awaited, assistant response fire-and-forget. Returns `Task & { threadId }`.
+- **`runChat(message, notch, { sessionId?, userId?, conversationId?, modelId?, history? })`** — Uses `getProviderForUser(userId, modelId)` or `getFallbackProvider(modelId)` for LLM calls. Provider-agnostic streaming with **tool-use loop** (max 5 iterations). Streams text tokens, handles `tool_use` blocks by executing tools and sending results back. Uses app-supplied local `history` for follow-up context and `CHAT_SYSTEM_PROMPT`. Chat conversations are not saved to Supabase.
 
 **Tool-use loop**: Stream → if LLM returns `tool_use` blocks → execute each tool → add tool results to conversation → stream again. Max 5 loops. Tool calls tracked in `toolsUsed` array and sent to notch as `tool_start` progress events.
 
@@ -478,7 +480,7 @@ Provider-agnostic execution in `runner.ts`:
 
 **Tool WebSocket events**: `tool_start` includes `tool_name` + `tool_input` (summary). `tool_result` includes `tool_name` + `tool_input` + `tool_output` (summary). Swift side adds tool messages to chatHistory on `tool_start`, updates with output on `tool_result`.
 
-**DB persistence pattern**: User message save is `await`ed (must be in DB before streaming). Assistant message save is fire-and-forget (`dbSave()` wraps in `.catch()` — never blocks streaming). On errors, partial content + tools_used + error message are all saved with `status: "failed"` and `partial: true` in metadata.
+**Conversation persistence pattern**: The macOS app owns chat history in `~/.danotch/conversations.json`. It sends recent local user/assistant messages with each `/api/chat` request. Backend in-memory tasks and WebSocket events are still used for live progress, but normal chat messages are not persisted to Supabase.
 
 **Message metadata in DB**:
 - Success: `{ status: "completed", model, input_tokens, output_tokens, tools_used }`
@@ -486,7 +488,7 @@ Provider-agnostic execution in `runner.ts`:
 
 Both modes also store tasks in-memory (`Map<string, Task>`) and push status/progress/done events through `NotchBridge` to the app's existing WebSocket protocol.
 
-**Thread queries**: `getThreads(userId)`, `getThreadMessages(userId, threadId)`, `deleteThread(userId, threadId)` — all scoped by userId.
+**Thread queries**: normal conversation thread APIs are legacy; current app history is local-only.
 
 ### Scheduler
 
@@ -509,7 +511,7 @@ Both modes also store tasks in-memory (`Map<string, Task>`) and push status/prog
 - `peek_notification`: `{ type: "peek_notification", data: { id, title, body, source, source_id, status, created_at } }` — triggers notch peek animation
 - `notification`: same structure but for regular (non-peek) notifications
 
-**Thread titles**: After first message in a new thread, `generateThreadTitle()` makes a fire-and-forget LLM call (max 30 tokens) to generate a 3-6 word title, saves to Supabase `threads.title`.
+**Conversation titles**: after first message in a new conversation, `generateThreadTitle()` makes a fire-and-forget LLM call (max 30 tokens) and pushes the title to the app via WebSocket; the app persists it locally.
 
 `computeNextRun()` uses `cron-parser` (`CronExpressionParser.parse()`) for cron → next Date. `cronToHuman()` converts common cron patterns to readable strings ("Daily at 09:00", "Every 30 minutes", "Weekdays at 09:00").
 
@@ -520,8 +522,6 @@ Both modes also store tasks in-memory (`Map<string, Task>`) and push status/prog
 | `user_profiles` | user_id, email, full_name | Insert on signup; select on login, `/me` |
 | `connected_apps` | user_id, app_type, active, composio_conn_id, connected_at, disconnected_at | Bulk insert on signup; update on Composio connect/disconnect/sync |
 | `provider_configs` | user_id, provider, api_key (encrypted), model, is_active, verified_at | CRUD + upsert on conflict `(user_id, provider)` |
-| `threads` | id, user_id, title, created_at, updated_at | Insert/ensure, update title/timestamp, list, delete |
-| `messages` | id, thread_id, role, content, metadata (JSON) | Insert user/assistant with metadata |
 | `scheduled_tasks` | user_id, name, prompt, task_type, cron, interval_ms, target_app, notify_user, enabled, next_run_at, last_run_at, run_count, last_result | CRUD via tools + REST + scheduler |
 | `notifications` | user_id, source, source_id, title, body, read, created_at | REST CRUD + scheduler insert |
 

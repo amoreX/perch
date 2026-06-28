@@ -862,7 +862,12 @@ struct SettingsPanel: View {
     private var defaultProviderRow: some View {
         let isUsingDefault = !viewModel.providerConfigs.contains { $0.isActive }
         return HStack {
-            Label("Default", systemImage: "server.rack")
+            VStack(alignment: .leading, spacing: 2) {
+                Label("Default", systemImage: "server.rack")
+                Text("Server Anthropic key")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
             if isUsingDefault {
                 Text("Active").foregroundStyle(.green).font(.callout)
@@ -958,6 +963,12 @@ struct ProviderRow: View {
                         .font(.caption)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    Button("Use") {
+                        viewModel.activateProviderConfig(provider: providerType)
+                    }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .tint(.clear)
                 }
             }
             .contentShape(Rectangle())

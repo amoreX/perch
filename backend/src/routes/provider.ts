@@ -186,6 +186,67 @@ export function createProviderRoutes(): Router {
     }
   });
 
+  // Activate an existing saved provider without re-entering its API key.
+  router.post('/activate', requireAuth, async (req, res) => {
+    const userId = req.user!.sub;
+    const { provider } = req.body;
+
+    if (!provider || !VALID_PROVIDERS.includes(provider)) {
+      res.status(400).json({ error: `provider must be one of: ${VALID_PROVIDERS.join(', ')}` });
+      return;
+    }
+
+    const { data: existing, error: lookupError } = await supabase
+      .from('danotch_provider_configs')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('provider', provider)
+      .single();
+
+    if (lookupError || !existing) {
+      res.status(404).json({ error: 'Provider config not found' });
+      return;
+    }
+
+    await supabase
+      .from('danotch_provider_configs')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('user_id', userId);
+
+    const { data, error } = await supabase
+      .from('danotch_provider_configs')
+      .update({ is_active: true, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('provider', provider)
+      .select('id, provider, model_id, is_active, verified_at, created_at, updated_at')
+      .single();
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    console.log(`[provider] Activated ${provider} for user ${userId}`);
+    res.json({ config: data });
+  });
+
+  // Use server default provider without deleting saved BYOK configs.
+  router.post('/default', requireAuth, async (req, res) => {
+    const userId = req.user!.sub;
+    const { error } = await supabase
+      .from('danotch_provider_configs')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('user_id', userId);
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    console.log(`[provider] Using server default for user ${userId}`);
+    res.json({ ok: true });
+  });
+
   // Delete provider config
   router.delete('/', requireAuth, async (req, res) => {
     const userId = req.user!.sub;

@@ -10,6 +10,7 @@ It started as a status viewer for delegated agent tasks. It's now closer to a pl
 app/       — the macOS app, Swift + SwiftUI (the notch overlay)
 backend/   — Node + Express, Supabase, multi-provider LLM, Composio integrations
 site/      — the landing page, React + Vite + Tailwind
+AGENTS.md  — repo guidance for AI coding agents
 ```
 
 Three separate things. The app talks to the backend over HTTP, the backend talks back over a WebSocket. The site is just marketing.
@@ -59,7 +60,7 @@ No tests in any of the three. This is a project, not a product team.
 
 **watches your agents.** If you've got Claude Code running in a terminal, Perch sees it. Project name, the last thing you asked it, what tool it's reaching for right now — reading a file, running a command, searching, thinking. It reads the session JSONL to figure out live state, so the indicator on the row tells you whether it's working or waiting on you. Click a session and it brings that terminal to the front.
 
-**is a chat box that does things.** Type into the notch and it hits the backend, which runs a real tool-use loop. It can run shell commands on your Mac, search the web, fetch a page. If you've connected Gmail, Calendar, Docs, or GitHub through Composio, it can use those too — and when it needs access it doesn't have, it asks, right there in the chat, with a connect/deny button.
+**is a chat box that does things.** Type into the notch and it hits the backend, which runs a real tool-use loop. It can run shell commands on your Mac, search the web, fetch a page. If you've connected Gmail, Calendar, Docs, or GitHub through Composio, it can use those too — and when it needs access it doesn't have, it asks, right there in the chat, with a connect/deny button. Conversations are stored locally by the app and sent back as recent context for follow-ups.
 
 **runs things on a schedule.** Ask it to check something every morning, or poll for a condition and only ping you when it's true. Scheduled tasks live on the backend, tick every 30 seconds, and either save their output quietly or push a notification. The conditional ones ("tell me when X drops below Y") only fire when they mean it.
 
@@ -67,14 +68,14 @@ No tests in any of the three. This is a project, not a product team.
 
 **shows you your machine.** CPU and RAM on arc gauges, network up/down as little oscilloscope graphs, disk, uptime, process count. There's a sortable process table if you want to go kill something. And you can pin a few of these — plus a calendar strip and an Apple Music widget — to the home view so they're always there.
 
-**brings your own key.** Use the model the server's configured with, or drop in your own Anthropic, OpenAI, or OpenRouter key. Keys are encrypted at rest. Pick whatever model you want.
+**brings your own key.** Use the model the server's configured with, or drop in your own Anthropic, OpenAI, or OpenRouter key. Keys are encrypted at rest. Saved providers can be switched on later without re-entering the key, and returning to the server default does not delete saved BYOK configs.
 
 ## the notch itself
 
 - **collapsed** — just two wings around the notch: time on the left, a count on the right
 - **hover** — the black pill drops down. tabs across the top: `HOME · AGENTS · STATS · 🔔 · ⚙`
 - **home** — greeting, time, date, your pinned widgets, the chat bar
-- **agents** — your Claude Code sessions and recent tasks, plus thread history
+- **agents** — your Claude Code sessions and locally restored chat history
 - **stats** — the bento grid of system metrics
 - **notifications** — grouped by the task that produced them
 - **settings** — chat behavior, display, agents, providers, app connections
@@ -100,9 +101,9 @@ There's also `connection_request` (the backend asking for OAuth approval to an a
 
 ## under the hood
 
-The app is MVVM SwiftUI. A `NotchViewModel` holds all the state and turns WebSocket events into model updates. Auth and settings persist to JSON in your home directory; threads and messages live in Supabase. Agent detection is a `ps` scan every few seconds plus reading Claude Code's own session files. System stats come straight from the Mach APIs.
+The app is MVVM SwiftUI. A `NotchViewModel` holds all the state and turns WebSocket events into model updates. Auth, settings, and conversations persist to JSON in your home directory (`~/.danotch`). Agent detection is a `ps` scan every few seconds plus reading Claude Code's own session files. System stats come straight from the Mach APIs.
 
-The backend is TypeScript ESM. The agent runner is provider-agnostic — same tool-use loop whether you're on Anthropic, OpenAI, or OpenRouter — with a five-iteration cap, DB persistence, and thread management. Composio handles the third-party OAuth. A scheduler loop picks up due tasks and runs them without tools.
+The backend is TypeScript ESM. The agent runner is provider-agnostic — same tool-use loop whether you're on Anthropic, OpenAI, or OpenRouter — with a five-iteration cap and app-supplied local history for follow-ups. Supabase stores auth-owned data, scheduled tasks, notifications, connected apps, and encrypted BYOK provider configs. Composio handles the third-party OAuth. A scheduler loop picks up due tasks and runs them without tools.
 
 ## the look
 

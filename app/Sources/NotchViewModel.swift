@@ -950,23 +950,56 @@ class NotchViewModel: ObservableObject {
         }
     }
 
+    func activateProviderConfig(provider: String) {
+        guard let auth = authManager, let token = auth.accessToken else { return }
+        providerError[provider] = nil
+
+        Task {
+            var request = URLRequest(url: URL(string: "\(APIConfig.baseURL)/api/provider/activate")!)
+            request.httpMethod = "POST"
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: ["provider": provider])
+
+            guard let (data, response) = try? await URLSession.shared.data(for: request) else {
+                await MainActor.run { self.providerError[provider] = "Network error" }
+                return
+            }
+
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 200 {
+                await MainActor.run {
+                    self.providerError[provider] = nil
+                    self.loadProviderConfigs()
+                    self.loadProviderModels()
+                }
+            } else {
+                let errorMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+                await MainActor.run {
+                    self.providerError[provider] = errorMsg ?? "Activate failed"
+                }
+            }
+        }
+    }
+
     func deactivateAllProviders() {
         guard let auth = authManager, let token = auth.accessToken else { return }
 
         Task {
-            // Deactivate by deleting all configs — fallback kicks in
-            var request = URLRequest(url: URL(string: "\(APIConfig.baseURL)/api/provider")!)
-            request.httpMethod = "DELETE"
+            var request = URLRequest(url: URL(string: "\(APIConfig.baseURL)/api/provider/default")!)
+            request.httpMethod = "POST"
             request.addValue("application/json", forHTTPHeaderField: "Content-Type")
             request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.httpBody = try? JSONSerialization.data(withJSONObject: [:] as [String: Any])
 
             _ = try? await URLSession.shared.data(for: request)
             await MainActor.run {
-                self.providerConfigs.removeAll()
+                for idx in self.providerConfigs.indices {
+                    self.providerConfigs[idx].isActive = false
+                }
                 self.providerError = [:]
-                self.providerVerified = [:]
                 self.activeModelProvider = "anthropic"
+                self.loadProviderConfigs()
                 self.loadProviderModels()
             }
         }
