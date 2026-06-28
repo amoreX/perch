@@ -64,6 +64,7 @@ class NotchSettings: ObservableObject {
     @Published var openChatOnSend: Bool        { didSet { save() } }
     @Published var restoreLastView: Bool       { didSet { save() } }
     @Published var keepOpenInChat: Bool        { didSet { save() } }
+    @Published var selectedDefaultModel: String { didSet { save() } }
 
     // Display — pinned widgets
     @Published var pinnedWidgets: [PinnedWidget] { didSet { save() } }
@@ -96,11 +97,14 @@ class NotchSettings: ObservableObject {
     // UI state (persisted across restarts)
     @Published var collapsedGroups: Set<String> { didSet { save() } }
 
+    static let defaultAnthropicModel = "claude-sonnet-4-6"
+
     init() {
         // Set defaults first
         openChatOnSend = true
         restoreLastView = false
         keepOpenInChat = true
+        selectedDefaultModel = Self.defaultAnthropicModel
         pinnedWidgets = [.calendar, .music]
         showBattery = true
         showAgentLiveState = true
@@ -116,6 +120,7 @@ class NotchSettings: ObservableObject {
             "openChatOnSend": openChatOnSend,
             "keepOpenInChat": keepOpenInChat,
             "restoreLastView": restoreLastView,
+            "selectedDefaultModel": selectedDefaultModel,
             "pinnedWidgets": pinnedWidgets.map { $0.rawValue },
             "showBattery": showBattery,
             "showAgentLiveState": showAgentLiveState,
@@ -123,7 +128,7 @@ class NotchSettings: ObservableObject {
             "collapsedGroups": Array(collapsedGroups),
         ]
         do {
-            try FileManager.default.createDirectory(at: Self.configDir, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: Self.configDir, withIntermediateDirectories: true, attributes: nil)
             let json = try JSONSerialization.data(withJSONObject: data, options: [.prettyPrinted, .sortedKeys])
             try json.write(to: Self.configFile)
         } catch {
@@ -138,6 +143,7 @@ class NotchSettings: ObservableObject {
         if let v = json["openChatOnSend"] as? Bool { openChatOnSend = v }
         if let v = json["keepOpenInChat"] as? Bool { keepOpenInChat = v }
         if let v = json["restoreLastView"] as? Bool { restoreLastView = v }
+        if let v = json["selectedDefaultModel"] as? String, !v.isEmpty { selectedDefaultModel = v }
         if let v = json["pinnedWidgets"] as? [String] {
             pinnedWidgets = v.compactMap { PinnedWidget(rawValue: $0) }
         } else {
@@ -195,6 +201,10 @@ class NotchViewModel: ObservableObject {
     @Published var providerVerifying: [String: Bool] = [:]
     @Published var providerError: [String: String?] = [:]
     @Published var providerVerified: [String: Bool] = [:]
+    @Published var modelOptions: [ProviderModelOption] = []
+    @Published var activeModelProvider: String = "anthropic"
+    @Published var isLoadingModels = false
+    @Published var modelListError: String?
 
     // WebSocket send callback (set by WebSocketServer)
     var wsSend: (([String: Any]) -> Void)?
@@ -206,6 +216,7 @@ class NotchViewModel: ObservableObject {
     @Published var agentMonitor = AgentMonitor()
     @Published var nowPlaying = NowPlayingMonitor()
     let statsMonitor = SystemStatsMonitor()
+    private let localConversationStore = LocalConversationStore()
     private var clockTimer: Timer?
     private var shimmerTimer: Timer?
     private var agentMonitorCancellable: AnyCancellable?
@@ -280,75 +291,19 @@ class NotchViewModel: ObservableObject {
     @Published var isLoadingHistory = false
 
     func loadThreadHistory() {
-        guard let auth = authManager else {
-            print("[Perch] loadThreadHistory: no auth manager")
-            return
+        let records = localConversationStore.loadAll()
+        isLoadingHistory = false
+        threadHistory = records.map {
+            ThreadSummary(
+                id: $0.id,
+                title: $0.title,
+                updatedAt: Self.isoString($0.updatedAt)
+            )
         }
-        isLoadingHistory = true
-        print("[Perch] loadThreadHistory: fetching...")
-
-        // Refresh token if needed, then fetch
-        Task {
-            await auth.ensureValidToken()
-            guard let token = auth.accessToken else {
-                await MainActor.run { self.isLoadingHistory = false }
-                print("[Perch] loadThreadHistory: no token after refresh")
-                return
-            }
-            await self.fetchThreadHistory(token: token)
-        }
-    }
-
-    private func fetchThreadHistory(token: String) async {
-
-        var request = URLRequest(url: URL(string: "\(APIConfig.baseURL)/api/threads")!)
-        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.isLoadingHistory = false
-
-                if let error {
-                    print("[Perch] loadThreadHistory error: \(error.localizedDescription)")
-                    return
-                }
-
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                guard let data else {
-                    print("[Perch] loadThreadHistory: no data, status=\(statusCode)")
-                    return
-                }
-
-                if statusCode != 200 {
-                    let body = String(data: data, encoding: .utf8) ?? ""
-                    print("[Perch] loadThreadHistory: status=\(statusCode) body=\(body)")
-                    return
-                }
-
-                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let threads = json["threads"] as? [[String: Any]] else {
-                    let body = String(data: data, encoding: .utf8) ?? ""
-                    print("[Perch] loadThreadHistory: parse failed, body=\(body)")
-                    return
-                }
-
-                self.threadHistory = threads.compactMap { t in
-                    guard let id = t["id"] as? String else { return nil }
-                    return ThreadSummary(
-                        id: id,
-                        title: t["title"] as? String,
-                        updatedAt: t["updated_at"] as? String ?? ""
-                    )
-                }
-                print("[Perch] loadThreadHistory: loaded \(self.threadHistory.count) threads")
-            }
-        }.resume()
+        hydrateLocalConversationTasks(from: records)
     }
 
     func loadThread(_ threadId: String) {
-        guard let token = authManager?.accessToken else { return }
-
         // If already loaded in tasks, just navigate
         if tasks.contains(where: { $0.threadId == threadId || $0.id == threadId }) {
             let taskId = tasks.first(where: { $0.threadId == threadId || $0.id == threadId })!.id
@@ -356,76 +311,100 @@ class NotchViewModel: ObservableObject {
             return
         }
 
-        var request = URLRequest(url: URL(string: "\(APIConfig.baseURL)/api/threads/\(threadId)")!)
-        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        guard let record = localConversationStore.load(id: threadId) else { return }
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
-            DispatchQueue.main.async {
-                guard let self,
-                      let data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let messages = json["messages"] as? [[String: Any]] else { return }
+        let task = task(from: record)
 
-                let chatHistory: [ChatMessage] = messages.compactMap { m in
-                    guard let id = m["id"] as? String,
-                          let role = m["role"] as? String,
-                          let content = m["content"] as? String else { return nil }
+        withAnimation(.snappy(duration: 0.3)) {
+            self.tasks.insert(task, at: 0)
+            self.viewState = .agentChat(record.id)
+        }
+    }
 
-                    let metadata = m["metadata"] as? [String: Any]
-                    let displayRole: String
-                    if role == "assistant" {
-                        // Check if this was a failed/partial message
-                        let status = metadata?["status"] as? String
-                        displayRole = "agent"
-                    } else {
-                        displayRole = role
-                    }
+    private func hydrateLocalConversationTasks(from records: [LocalConversationRecord]) {
+        guard !records.isEmpty else { return }
 
-                    return ChatMessage(
-                        id: id,
-                        role: displayRole,
-                        content: content,
-                        toolName: nil,
-                        draftCard: nil,
-                        timestamp: Date()
-                    )
-                }
-
-                guard !chatHistory.isEmpty else { return }
-
-                // Find title from first user message
-                let firstUserMsg = chatHistory.first(where: { $0.role == "user" })?.content ?? "Conversation"
-                let taskId = UUID().uuidString
-
-                let status: TaskStatus = {
-                    if let lastAssistant = messages.last(where: { ($0["role"] as? String) == "assistant" }),
-                       let metadata = lastAssistant["metadata"] as? [String: Any],
-                       let s = metadata["status"] as? String, s == "failed" {
-                        return .failed
-                    }
-                    return .completed
-                }()
-
-                let task = SubagentTask(
-                    id: taskId,
-                    task: firstUserMsg,
-                    description: String(firstUserMsg.prefix(60)),
-                    status: status,
-                    toolCallsCount: 0,
-                    streamingText: "",
-                    createdAt: Date(),
-                    activitySteps: [],
-                    chatHistory: chatHistory,
-                    threadId: threadId,
-                    isFromHistory: true
-                )
-
-                withAnimation(.snappy(duration: 0.3)) {
-                    self.tasks.insert(task, at: 0)
-                    self.viewState = .agentChat(taskId)
-                }
+        var existingIds = Set<String>()
+        for task in tasks {
+            existingIds.insert(task.id)
+            if let threadId = task.threadId {
+                existingIds.insert(threadId)
             }
-        }.resume()
+        }
+
+        let restoredTasks: [SubagentTask] = records.compactMap { record in
+            guard !existingIds.contains(record.id), !record.messages.isEmpty else { return nil }
+            existingIds.insert(record.id)
+            return task(from: record)
+        }
+
+        guard !restoredTasks.isEmpty else { return }
+        tasks.append(contentsOf: restoredTasks)
+    }
+
+    private func task(from record: LocalConversationRecord) -> SubagentTask {
+        SubagentTask(
+            id: record.id,
+            task: record.task,
+            description: record.title,
+            status: record.status,
+            toolCallsCount: record.toolCallsCount,
+            streamingText: "",
+            result: record.messages.last(where: { $0.role == "agent" })?.content,
+            createdAt: record.createdAt,
+            completedAt: record.completedAt,
+            activitySteps: [],
+            chatHistory: record.messages,
+            threadId: record.id,
+            isFromHistory: false
+        )
+    }
+
+    private func persistTask(_ task: SubagentTask) {
+        guard !task.chatHistory.isEmpty else { return }
+
+        let savedTitle = task.description?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackTitle = String((task.chatHistory.first(where: { $0.role == "user" })?.content ?? task.task).prefix(60))
+        let title: String
+        if let savedTitle, !savedTitle.isEmpty {
+            title = savedTitle
+        } else {
+            title = fallbackTitle
+        }
+        let updatedAt = task.completedAt ?? task.chatHistory.last?.timestamp ?? Date()
+        let record = LocalConversationRecord(
+            id: task.threadId ?? task.id,
+            title: title,
+            task: task.task,
+            status: task.status,
+            createdAt: task.createdAt,
+            updatedAt: updatedAt,
+            completedAt: task.completedAt,
+            toolCallsCount: task.toolCallsCount,
+            messages: task.chatHistory
+        )
+        localConversationStore.upsert(record)
+        loadThreadHistory()
+    }
+
+    private func persistTask(at idx: Int) {
+        guard tasks.indices.contains(idx) else { return }
+        persistTask(tasks[idx])
+    }
+
+    private static func isoString(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
+    }
+
+    func interruptInProgressConversations() {
+        localConversationStore.markInProgressInterrupted()
+        for idx in tasks.indices where tasks[idx].isActive {
+            tasks[idx].status = .cancelled
+            tasks[idx].completedAt = Date()
+            tasks[idx].streamingText = ""
+            persistTask(at: idx)
+            }
+        loadThreadHistory()
     }
 
     // MARK: - Notifications
@@ -787,7 +766,111 @@ class NotchViewModel: ObservableObject {
             await MainActor.run {
                 self.providerConfigs = parsed
                 self.providerLoading = false
+                if let active = parsed.first(where: { $0.isActive }) {
+                    self.activeModelProvider = active.provider
+                    if self.settings.selectedDefaultModel.isEmpty {
+                        self.settings.selectedDefaultModel = active.modelId
+                    }
+                }
+                self.loadProviderModels()
             }
+        }
+    }
+
+    func loadProviderModels() {
+        guard let auth = authManager, let token = auth.accessToken else {
+            let provider = activeProviderType
+            activeModelProvider = provider
+            modelOptions = fallbackModelOptions(for: provider)
+            ensureSelectedModelIsAvailable(activeModel: settings.selectedDefaultModel)
+            return
+        }
+
+        isLoadingModels = true
+        modelListError = nil
+
+        Task {
+            var request = URLRequest(url: URL(string: "\(APIConfig.baseURL)/api/provider/models")!)
+            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+            guard let (data, response) = try? await URLSession.shared.data(for: request) else {
+                await MainActor.run {
+                    self.isLoadingModels = false
+                    self.modelListError = "Model list unavailable"
+                    let provider = self.activeProviderType
+                    self.activeModelProvider = provider
+                    self.modelOptions = self.fallbackModelOptions(for: provider)
+                    self.ensureSelectedModelIsAvailable(activeModel: self.settings.selectedDefaultModel)
+                }
+                return
+            }
+
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+            let provider = json["provider"] as? String ?? self.activeProviderType
+            let activeModel = json["active_model"] as? String
+            let warning = json["warning"] as? String
+            let models = (json["models"] as? [[String: Any]] ?? []).compactMap { item -> ProviderModelOption? in
+                guard let id = item["id"] as? String, !id.isEmpty else { return nil }
+                return ProviderModelOption(
+                    id: id,
+                    name: item["name"] as? String ?? id,
+                    provider: provider,
+                    contextLength: item["context_length"] as? Int
+                )
+            }
+
+            await MainActor.run {
+                self.isLoadingModels = false
+                self.activeModelProvider = provider
+                self.modelOptions = models.isEmpty ? self.fallbackModelOptions(for: provider) : models
+                self.modelListError = status == 200 ? warning : (json["error"] as? String ?? "Model list unavailable")
+                self.ensureSelectedModelIsAvailable(activeModel: activeModel)
+            }
+        }
+    }
+
+    func selectModel(_ modelId: String) {
+        guard !modelId.isEmpty else { return }
+        settings.selectedDefaultModel = modelId
+    }
+
+    private func selectedModelIdForRequest() -> String {
+        if modelOptions.isEmpty {
+            let fallbackOptions = fallbackModelOptions(for: activeProviderType)
+            if !fallbackOptions.contains(where: { $0.id == settings.selectedDefaultModel }),
+               let fallback = fallbackOptions.first?.id {
+                settings.selectedDefaultModel = fallback
+            }
+            return settings.selectedDefaultModel
+        }
+
+        if !modelOptions.contains(where: { $0.id == settings.selectedDefaultModel }) {
+            ensureSelectedModelIsAvailable(activeModel: nil)
+        }
+        return settings.selectedDefaultModel
+    }
+
+    var activeProviderType: String {
+        providerConfigs.first(where: { $0.isActive })?.provider ?? "anthropic"
+    }
+
+    private func ensureSelectedModelIsAvailable(activeModel: String?) {
+        let availableIds = Set(modelOptions.map(\.id))
+        if availableIds.contains(settings.selectedDefaultModel) {
+            return
+        }
+        if let activeModel, availableIds.contains(activeModel) {
+            settings.selectedDefaultModel = activeModel
+            return
+        }
+        settings.selectedDefaultModel = activeModel ?? modelOptions.first?.id ?? NotchSettings.defaultAnthropicModel
+    }
+
+    private func fallbackModelOptions(for provider: String) -> [ProviderModelOption] {
+        let models = ProviderConfig.availableModels[provider] ?? ProviderConfig.availableModels["anthropic"] ?? []
+        return models.map {
+            ProviderModelOption(id: $0.id, name: $0.label, provider: provider, contextLength: nil)
         }
     }
 
@@ -816,6 +899,7 @@ class NotchViewModel: ObservableObject {
                 await MainActor.run {
                     self.providerError[provider] = nil
                     self.loadProviderConfigs()
+                    self.loadProviderModels()
                 }
             } else {
                 let errorMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
@@ -882,6 +966,8 @@ class NotchViewModel: ObservableObject {
                 self.providerConfigs.removeAll()
                 self.providerError = [:]
                 self.providerVerified = [:]
+                self.activeModelProvider = "anthropic"
+                self.loadProviderModels()
             }
         }
     }
@@ -901,6 +987,7 @@ class NotchViewModel: ObservableObject {
                 self.providerConfigs.removeAll { $0.provider == provider }
                 self.providerError[provider] = nil
                 self.providerVerified[provider] = false
+                self.loadProviderModels()
             }
         }
     }
@@ -943,6 +1030,7 @@ class NotchViewModel: ObservableObject {
                     draftCard: nil, timestamp: Date()
                 ))
             }
+            persistTask(at: idx)
         }
     }
 
@@ -1039,11 +1127,13 @@ class NotchViewModel: ObservableObject {
                     tasks[idx].task = title
                     tasks[idx].description = title
                 }
+                persistTask(at: idx)
                 return
             }
             tasks[idx].status = TaskStatus(rawValue: data["status"] as? String ?? "running") ?? .running
             if let desc = data["description"] as? String { tasks[idx].description = desc }
             if let count = data["tool_calls_count"] as? Int { tasks[idx].toolCallsCount = count }
+            persistTask(at: idx)
         } else {
             let task = SubagentTask(
                 id: sessionId,
@@ -1108,6 +1198,9 @@ class NotchViewModel: ObservableObject {
             default: break
             }
         }
+        if progressType == "text_flush" || progressType == "tool_start" || progressType == "tool_result" {
+            persistTask(at: idx)
+        }
     }
 
     private func handleDone(sessionId: String, data: [String: Any]) {
@@ -1134,6 +1227,7 @@ class NotchViewModel: ObservableObject {
                 ))
             }
         }
+        persistTask(at: idx)
     }
 
     private func processBulkUpdate(_ json: [String: Any]) {
@@ -1163,20 +1257,19 @@ class NotchViewModel: ObservableObject {
               let id = data["id"] as? String,
               let title = data["title"] as? String else { return }
 
+        let body = Self.cleanNotifBody(data["body"] as? String ?? "")
         let item = NotificationItem(
             id: id,
             title: title,
-            body: data["body"] as? String,
+            body: body,
             source: data["source"] as? String ?? "system",
             sourceId: data["source_id"] as? String,
             read: false,
             createdAt: data["created_at"] as? String ?? ""
         )
 
-        withAnimation(.snappy(duration: 0.3)) {
-            notifications.insert(item, at: 0)
-            unreadCount += 1
-        }
+        insertOrUpdateNotification(item)
+        showPeek(title: title, body: body)
 
         loadScheduledTasks()
     }
@@ -1205,11 +1298,25 @@ class NotchViewModel: ObservableObject {
             createdAt: data["created_at"] as? String ?? ""
         )
 
-        withAnimation(.snappy(duration: 0.3)) {
-            notifications.insert(item, at: 0)
-            unreadCount += 1
-        }
+        insertOrUpdateNotification(item)
+        showPeek(title: title, body: body)
 
+        loadScheduledTasks()
+    }
+
+    private func insertOrUpdateNotification(_ item: NotificationItem) {
+        if let idx = notifications.firstIndex(where: { $0.id == item.id }) {
+            notifications[idx] = item
+        } else {
+            withAnimation(.snappy(duration: 0.3)) {
+                notifications.insert(item, at: 0)
+                unreadCount += item.read ? 0 : 1
+            }
+        }
+        unreadCount = notifications.filter { !$0.read }.count
+    }
+
+    private func showPeek(title: String, body: String) {
         // Soft peek — don't fully expand, just grow the notch slightly
         withAnimation(.snappy(duration: 0.35)) {
             peekTitle = title
@@ -1222,8 +1329,6 @@ class NotchViewModel: ObservableObject {
             guard let self, !self.peekHovering else { return }
             self.dismissPeek()
         }
-
-        loadScheduledTasks()
     }
 
     func dismissPeek() {
@@ -1355,6 +1460,7 @@ class NotchViewModel: ObservableObject {
                     // Promote to active if it was from history
                     tasks[idx].isFromHistory = false
                 }
+                persistTask(at: idx)
             }
         } else {
             // New task
@@ -1372,7 +1478,8 @@ class NotchViewModel: ObservableObject {
                         id: UUID().uuidString, role: "user", content: message,
                         toolName: nil, draftCard: nil, timestamp: Date()
                     )
-                ]
+                ],
+                threadId: sid
             )
             withAnimation(.snappy(duration: 0.3)) {
                 tasks.insert(task, at: 0)
@@ -1381,11 +1488,12 @@ class NotchViewModel: ObservableObject {
                 }
                 // else: stay on current page, task appears in background
             }
+            persistTask(task)
         }
 
         // POST to backend (refresh token first if needed)
         let auth = authManager
-        let threadIdForRequest = tasks.first(where: { $0.id == sid })?.threadId
+        let historyForRequest = recentHistoryPayload(for: sid, currentMessage: message)
         Task {
             await auth?.ensureValidToken()
             guard let url = URL(string: "\(APIConfig.baseURL)/api/chat") else { return }
@@ -1395,10 +1503,13 @@ class NotchViewModel: ObservableObject {
             if let token = auth?.accessToken {
                 request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
-            var body: [String: Any] = ["message": message, "session_id": sid]
-            if let threadId = threadIdForRequest {
-                body["thread_id"] = threadId
-            }
+            let body: [String: Any] = [
+                "message": message,
+                "session_id": sid,
+                "conversation_id": sid,
+                "model_id": selectedModelIdForRequest(),
+                "history": historyForRequest,
+            ]
             request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
             URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
@@ -1422,5 +1533,19 @@ class NotchViewModel: ObservableObject {
             // Success is handled by WebSocket events updating the task
         }.resume()
         } // Task
+    }
+
+    private func recentHistoryPayload(for sessionId: String, currentMessage: String) -> [[String: String]] {
+        guard let task = tasks.first(where: { $0.id == sessionId }) else { return [] }
+        var messages = task.chatHistory.filter { $0.role == "user" || $0.role == "agent" }
+        if let last = messages.last, last.role == "user", last.content == currentMessage {
+            messages.removeLast()
+        }
+        return messages.suffix(24).map {
+            [
+                "role": $0.role == "agent" ? "assistant" : "user",
+                "content": $0.content,
+            ]
+        }
     }
 }

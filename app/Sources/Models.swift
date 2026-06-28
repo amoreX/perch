@@ -10,14 +10,14 @@ enum TaskStatus: String, Codable {
     case awaitingApproval = "awaiting_approval"
 }
 
-struct DraftCard {
+struct DraftCard: Codable {
     let type: String
     let title: String
     let preview: String
     let recipient: String?
 }
 
-struct ChatMessage: Identifiable {
+struct ChatMessage: Identifiable, Codable {
     let id: String
     let role: String
     var content: String
@@ -26,6 +26,26 @@ struct ChatMessage: Identifiable {
     var toolOutput: String?
     let draftCard: DraftCard?
     let timestamp: Date
+
+    init(
+        id: String,
+        role: String,
+        content: String,
+        toolName: String? = nil,
+        toolInput: String? = nil,
+        toolOutput: String? = nil,
+        draftCard: DraftCard? = nil,
+        timestamp: Date
+    ) {
+        self.id = id
+        self.role = role
+        self.content = content
+        self.toolName = toolName
+        self.toolInput = toolInput
+        self.toolOutput = toolOutput
+        self.draftCard = draftCard
+        self.timestamp = timestamp
+    }
 }
 
 struct SubagentTask: Identifiable {
@@ -315,12 +335,16 @@ struct ProviderConfig: Identifiable {
         "openrouter": "anthropic/claude-sonnet-4-6",
     ]
 
-    /// (apiId, friendlyLabel) for each provider, newest first, capped at 3.
+    /// Fallback choices only. The chat selector fetches live provider models when possible.
     static let availableModels: [String: [(id: String, label: String)]] = [
         "anthropic": [
-            ("claude-opus-4-7",   "Opus 4.7"),
-            ("claude-sonnet-4-6", "Sonnet 4.6"),
-            ("claude-haiku-4-5",  "Haiku 4.5"),
+            ("claude-fable-5",                  "Fable 5"),
+            ("claude-opus-4-8",                 "Opus 4.8"),
+            ("claude-sonnet-4-6",               "Sonnet 4.6"),
+            ("claude-haiku-4-5-20251001",       "Haiku 4.5"),
+            ("claude-opus-4-7",                 "Opus 4.7"),
+            ("claude-opus-4-6",                 "Opus 4.6"),
+            ("claude-sonnet-4-5-20250929",      "Sonnet 4.5"),
         ],
         "openai": [
             ("gpt-5",      "GPT-5"),
@@ -328,11 +352,23 @@ struct ProviderConfig: Identifiable {
             ("gpt-4o",     "GPT-4o"),
         ],
         "openrouter": [
-            ("anthropic/claude-opus-4-7",   "Opus 4.7"),
             ("anthropic/claude-sonnet-4-6", "Sonnet 4.6"),
+            ("anthropic/claude-opus-4-8",   "Opus 4.8"),
+            ("anthropic/claude-haiku-4-5",  "Haiku 4.5"),
             ("openai/gpt-5",                "GPT-5"),
         ],
     ]
+}
+
+struct ProviderModelOption: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let provider: String
+    let contextLength: Int?
+
+    var displayName: String {
+        name.isEmpty ? id : name
+    }
 }
 
 struct NotificationItem: Identifiable {

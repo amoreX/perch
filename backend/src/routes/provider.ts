@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { supabase } from '../lib/supabase.js';
-import { encrypt } from '../providers/crypto.js';
+import { encrypt, decrypt } from '../providers/crypto.js';
 import { createProvider } from '../providers/factory.js';
 import { config } from '../config.js';
 import type { ProviderType } from '../providers/types.js';
@@ -9,6 +9,12 @@ import type { ProviderType } from '../providers/types.js';
 const VALID_PROVIDERS: ProviderType[] = ['anthropic', 'openai', 'openrouter'];
 
 const DEFAULT_MODELS = config.defaultModels;
+
+type ModelOption = {
+  id: string;
+  name: string;
+  context_length?: number;
+};
 
 function maskKey(key: string): string {
   if (key.length <= 8) return '••••••••';
@@ -35,6 +41,56 @@ export function createProviderRoutes(): Router {
     }
 
     res.json({ configs: data ?? [] });
+  });
+
+  // List available models for the active provider using the saved API key.
+  router.get('/models', requireAuth, async (req, res) => {
+    const userId = req.user!.sub;
+    console.log(`[provider] GET /models userId=${userId}`);
+
+    const { data, error } = await supabase
+      .from('danotch_provider_configs')
+      .select('provider, api_key_encrypted, model_id')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .single();
+
+    if (error || !data) {
+      const serverKey = process.env.ANTHROPIC_API_KEY ?? '';
+      try {
+        const models = serverKey ? await fetchAnthropicModels(serverKey) : [];
+        res.json({
+          provider: 'anthropic',
+          active_model: config.api.model,
+          models: models.length > 0 ? models : fallbackModels('anthropic'),
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to fetch Anthropic models';
+        console.warn(`[provider] Server Anthropic model list failed: ${msg}`);
+        res.json({
+          provider: 'anthropic',
+          active_model: config.api.model,
+          models: fallbackModels('anthropic'),
+          warning: msg,
+        });
+      }
+      return;
+    }
+
+    try {
+      const apiKey = decrypt(data.api_key_encrypted);
+      const provider = data.provider as ProviderType;
+      const models = await fetchProviderModels(provider, apiKey);
+      res.json({
+        provider,
+        active_model: data.model_id,
+        models: models.length > 0 ? models : fallbackModels(provider),
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to fetch models';
+      console.warn(`[provider] Model list failed: ${msg}`);
+      res.status(502).json({ error: msg, models: fallbackModels(data.provider as ProviderType) });
+    }
   });
 
   // Create or update provider config
@@ -156,3 +212,123 @@ export function createProviderRoutes(): Router {
 
   return router;
 }
+
+async function fetchProviderModels(provider: ProviderType, apiKey: string): Promise<ModelOption[]> {
+  switch (provider) {
+    case 'openrouter':
+      return fetchOpenRouterModels(apiKey);
+    case 'openai':
+      return fetchOpenAIModels(apiKey);
+    case 'anthropic':
+      return fetchAnthropicModels(apiKey);
+  }
+}
+
+async function fetchOpenRouterModels(apiKey: string): Promise<ModelOption[]> {
+  const resp = await fetch('https://openrouter.ai/api/v1/models', {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'User-Agent': 'Perch/1.0',
+    },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) throw new Error(`OpenRouter models failed (${resp.status})`);
+  const json = await resp.json() as { data?: Array<Record<string, unknown>> };
+  return (json.data ?? [])
+    .map((m) => ({
+      id: String(m.id ?? ''),
+      name: String(m.name ?? m.id ?? ''),
+      context_length: typeof m.context_length === 'number' ? m.context_length : undefined,
+    }))
+    .filter((m) => m.id.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function fetchOpenAIModels(apiKey: string): Promise<ModelOption[]> {
+  const resp = await fetch('https://api.openai.com/v1/models', {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) throw new Error(`OpenAI models failed (${resp.status})`);
+  const json = await resp.json() as { data?: Array<Record<string, unknown>> };
+  return (json.data ?? [])
+    .map((m) => String(m.id ?? ''))
+    .filter((id) => id.startsWith('gpt-') || id.startsWith('o'))
+    .sort()
+    .map((id) => ({ id, name: id }));
+}
+
+async function fetchAnthropicModels(apiKey: string): Promise<ModelOption[]> {
+  const models: ModelOption[] = [];
+  let afterId: string | undefined;
+
+  for (let page = 0; page < 10; page += 1) {
+    const url = new URL('https://api.anthropic.com/v1/models');
+    url.searchParams.set('limit', '100');
+    if (afterId) url.searchParams.set('after_id', afterId);
+
+    const resp = await fetch(url, {
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) throw new Error(`Anthropic models failed (${resp.status})`);
+    const json = await resp.json() as {
+      data?: Array<Record<string, unknown>>;
+      has_more?: boolean;
+      last_id?: string;
+    };
+
+    models.push(...(json.data ?? [])
+      .map((m) => ({
+        id: String(m.id ?? ''),
+        name: String(m.display_name ?? m.id ?? ''),
+        context_length: typeof m.max_input_tokens === 'number' ? m.max_input_tokens : undefined,
+      }))
+      .filter((m) => m.id.length > 0));
+
+    if (!json.has_more || !json.last_id) break;
+    afterId = json.last_id;
+  }
+
+  return dedupeModels(models);
+}
+
+function fallbackModels(provider: ProviderType): ModelOption[] {
+  return (ProviderConfigFallback[provider] ?? []).map(([id, name]) => ({ id, name }));
+}
+
+function dedupeModels(models: ModelOption[]): ModelOption[] {
+  const seen = new Set<string>();
+  return models.filter((model) => {
+    if (seen.has(model.id)) return false;
+    seen.add(model.id);
+    return true;
+  });
+}
+
+const ProviderConfigFallback: Record<ProviderType, [string, string][]> = {
+  anthropic: [
+    ['claude-fable-5', 'Claude Fable 5'],
+    ['claude-opus-4-8', 'Claude Opus 4.8'],
+    ['claude-sonnet-4-6', 'Claude Sonnet 4.6'],
+    ['claude-haiku-4-5-20251001', 'Claude Haiku 4.5'],
+    ['claude-opus-4-7', 'Claude Opus 4.7'],
+    ['claude-opus-4-6', 'Claude Opus 4.6'],
+    ['claude-sonnet-4-5-20250929', 'Claude Sonnet 4.5'],
+  ],
+  openai: [
+    ['gpt-5', 'GPT-5'],
+    ['gpt-5-mini', 'GPT-5 mini'],
+    ['gpt-4o', 'GPT-4o'],
+  ],
+  openrouter: [
+    ['anthropic/claude-sonnet-4-6', 'Claude Sonnet 4.6'],
+    ['anthropic/claude-opus-4-8', 'Claude Opus 4.8'],
+    ['anthropic/claude-haiku-4-5', 'Claude Haiku 4.5'],
+    ['openai/gpt-5', 'GPT-5'],
+    ['google/gemini-2.5-pro', 'Gemini 2.5 Pro'],
+  ],
+};

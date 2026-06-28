@@ -427,7 +427,7 @@ Multi-provider LLM support via `providers/` directory. Users can bring their own
 
 **Key encryption**: AES-256-GCM via `PROVIDER_KEY_SECRET` env var. Keys encrypted before DB storage, decrypted on use.
 
-**Default BYOK models**: anthropic → `claude-sonnet-4-20250514`, openai → `gpt-5`, openrouter → `anthropic/claude-sonnet-4-20250514`.
+**Default BYOK models**: anthropic → `claude-sonnet-4-6`, openai → `gpt-5`, openrouter → `anthropic/claude-sonnet-4-6`.
 
 ### Composio App Integrations
 
@@ -534,7 +534,7 @@ All requests logged with timestamp, method, path, and auth status. Route handler
 All settings env-overridable:
 - `PORT` — server port (default: 3001)
 - `NOTCH_WS_URL` — notch app WebSocket (default: ws://localhost:7778/ws)
-- `CLAUDE_MODEL` — fallback Anthropic model when using server key (default: claude-sonnet-4-20250514)
+- `CLAUDE_MODEL` — fallback Anthropic model when using server key (default: claude-sonnet-4-6)
 - `MAX_TOKENS` — API max tokens (default: 4096)
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `SUPABASE_JWT_SECRET` — Supabase credentials (in `.env`, gitignored)
 - `ANTHROPIC_API_KEY` — fallback LLM key when user has no active BYOK provider

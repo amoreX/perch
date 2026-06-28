@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 class PerchPanel: NSPanel {
@@ -62,6 +63,7 @@ class NotchWindowController: NSObject {
     var localKeyboardMonitor: Any?
     var collapseTimer: Timer?
     var swipeAccumulator: CGFloat = 0
+    private var peekCancellable: AnyCancellable?
 
     private let panelWidth: CGFloat = 580
     private let panelHeight: CGFloat = 400
@@ -80,6 +82,7 @@ class NotchWindowController: NSObject {
         rebuildPanels()
         startMouseTracking()
         startKeyboardShortcut()
+        startPeekPresentation()
 
         NotificationCenter.default.addObserver(
             self,
@@ -245,6 +248,33 @@ class NotchWindowController: NSObject {
         }
     }
 
+    private func startPeekPresentation() {
+        peekCancellable = viewModel.$isPeeking
+            .removeDuplicates()
+            .sink { [weak self] isPeeking in
+                guard let self else { return }
+                if isPeeking {
+                    self.presentPeek()
+                } else if !self.viewModel.isExpanded {
+                    self.activePanel?.ignoresMouseEvents = true
+                    self.activePanel?.resignKey()
+                }
+            }
+    }
+
+    private func presentPeek() {
+        collapseTimer?.invalidate()
+        collapseTimer = nil
+
+        if let screen = screenForMouse() ?? NSScreen.main {
+            activateScreen(screen)
+        }
+
+        activePanel?.ignoresMouseEvents = false
+        activePanel?.hasShadow = false
+        activePanel?.orderFrontRegardless()
+    }
+
     private func handleScroll(_ event: NSEvent) {
         guard viewModel.isExpanded else { return }
         guard viewModel.viewState == .taskList else { return }
@@ -406,6 +436,7 @@ class NotchWindowController: NSObject {
         if let m = keyboardMonitor { NSEvent.removeMonitor(m) }
         if let m = localKeyboardMonitor { NSEvent.removeMonitor(m) }
         collapseTimer?.invalidate()
+        peekCancellable?.cancel()
     }
 }
 

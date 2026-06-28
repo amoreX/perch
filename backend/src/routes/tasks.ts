@@ -28,25 +28,38 @@ export function createTaskRoutes(notch: NotchBridge): Router {
   // ── Chat (auth optional — works with or without token) ──
 
   router.post('/chat', async (req, res) => {
-    const { message, session_id, thread_id } = req.body;
+    const { message, session_id, conversation_id, model_id } = req.body;
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: 'message is required' });
       return;
     }
 
+    const history = Array.isArray(req.body.history)
+      ? req.body.history
+          .filter((m: unknown): m is { role: 'user' | 'assistant'; content: string } => {
+            if (!m || typeof m !== 'object') return false;
+            const item = m as Record<string, unknown>;
+            return (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string';
+          })
+          .slice(-24)
+      : [];
+
     const userId = await extractUserId(req.headers.authorization);
-    console.log(`[chat] message="${message.slice(0, 50)}" userId=${userId ?? 'none'} threadId=${thread_id ?? 'new'} sessionId=${session_id ?? 'new'}`);
+    console.log(`[chat] message="${message.slice(0, 50)}" userId=${userId ?? 'none'} conversationId=${conversation_id ?? 'new'} history=${history.length} sessionId=${session_id ?? 'new'}`);
 
     try {
       const task = await runChat(message, notch, {
         sessionId: session_id,
         userId,
-        threadId: thread_id,
+        conversationId: conversation_id,
+        modelId: typeof model_id === 'string' ? model_id : undefined,
+        history,
       });
-      console.log(`[chat] Done → taskId=${task.id} threadId=${task.threadId} status=${task.status}`);
+      console.log(`[chat] Done → taskId=${task.id} conversationId=${task.threadId} status=${task.status}`);
       res.json({
         task: { id: task.id, status: task.status, result: task.result, error: task.error },
         thread_id: task.threadId,
+        conversation_id: task.threadId,
       });
     } catch (err) {
       console.error(`[chat] Error:`, err);

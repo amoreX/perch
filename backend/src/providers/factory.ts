@@ -11,7 +11,7 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
  * Get the LLM provider for a specific user.
  * Checks for user's active provider config in DB, falls back to server's ANTHROPIC_API_KEY.
  */
-export async function getProviderForUser(userId: string): Promise<LLMProvider> {
+export async function getProviderForUser(userId: string, fallbackModelId?: string): Promise<LLMProvider> {
   try {
     const { data, error } = await supabase
       .from('danotch_provider_configs')
@@ -22,24 +22,25 @@ export async function getProviderForUser(userId: string): Promise<LLMProvider> {
 
     if (!error && data) {
       const apiKey = decrypt(data.api_key_encrypted);
-      console.log(`[provider] User ${userId} → ${data.provider} (${data.model_id})`);
-      return createProvider(data.provider as ProviderType, apiKey, data.model_id);
+      const modelId = fallbackModelId || data.model_id;
+      console.log(`[provider] User ${userId} → ${data.provider} (${modelId})`);
+      return createProvider(data.provider as ProviderType, apiKey, modelId);
     }
   } catch (err) {
     console.warn(`[provider] Failed to load config for user ${userId}, using fallback:`, err);
   }
 
-  return getFallbackProvider();
+  return getFallbackProvider(fallbackModelId);
 }
 
 /**
  * Fallback provider using the server's ANTHROPIC_API_KEY env var.
  * Used when user has no provider config or for unauthenticated requests.
  */
-export function getFallbackProvider(): LLMProvider {
+export function getFallbackProvider(modelId?: string): LLMProvider {
   return new AnthropicProvider(
     process.env.ANTHROPIC_API_KEY ?? '',
-    config.api.model
+    modelId || config.api.model
   );
 }
 

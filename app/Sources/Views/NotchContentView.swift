@@ -6,8 +6,10 @@ struct NotchContentView: View {
     var body: some View {
         Group {
             switch viewModel.viewState {
-            case .overview, .taskList:
+            case .overview:
                 TodayPage(viewModel: viewModel)
+            case .taskList:
+                AgentsPage(viewModel: viewModel)
             case .agentChat(let taskId):
                 AgentChatView(viewModel: viewModel, taskId: taskId)
             case .agents:
@@ -218,12 +220,15 @@ private struct TodayPage: View {
 
     private var composer: some View {
         HStack(spacing: 10) {
+            ChatModelSelectorView(viewModel: viewModel, maxWidth: 122)
+
             TextField("Ask Perch anything…", text: $composerText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .foregroundStyle(.white)
                 .focused($composerFocused)
                 .onSubmit { submit() }
+                .layoutPriority(1)
             sendButton
         }
         .padding(.horizontal, 14)

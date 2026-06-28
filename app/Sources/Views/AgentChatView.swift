@@ -299,6 +299,8 @@ struct AgentChatView: View {
 
     private var inputBar: some View {
         HStack(spacing: 10) {
+            ChatModelSelectorView(viewModel: viewModel, maxWidth: 122)
+
             TextField("Message agent", text: $messageText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
@@ -306,6 +308,7 @@ struct AgentChatView: View {
                 .focused($isMessageFocused)
                 .onSubmit { sendMessage() }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
 
             sendButton
         }

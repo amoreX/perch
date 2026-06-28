@@ -7,16 +7,16 @@ export const config = {
 
   // Default API settings (used as fallback when no BYOK provider configured)
   api: {
-    model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+    model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-6',
     maxTokens: parseInt(process.env.MAX_TOKENS || '4096', 10),
     systemPrompt: CHAT_SYSTEM_PROMPT,
   },
 
   // Default models per provider (for BYOK)
   defaultModels: {
-    anthropic: 'claude-sonnet-4-20250514',
+    anthropic: 'claude-sonnet-4-6',
     openai: 'gpt-5',
-    openrouter: 'anthropic/claude-sonnet-4-20250514',
+    openrouter: 'anthropic/claude-sonnet-4-6',
   } as Record<ProviderType, string>,
 
   // Composio (Gmail integration)

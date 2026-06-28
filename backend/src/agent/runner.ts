@@ -103,13 +103,13 @@ async function updateThreadTimestamp(threadId: string) {
 
 async function generateThreadTitle(
   threadId: string, sessionId: string, userMessage: string,
-  assistantResponse: string, notch: NotchBridge, userId?: string
+  assistantResponse: string, notch: NotchBridge, userId?: string, fallbackModelId?: string
 ) {
   try {
     // Use user's provider for title generation, or fallback
     const provider = userId
-      ? await getProviderForUser(userId)
-      : getFallbackProvider();
+      ? await getProviderForUser(userId, fallbackModelId)
+      : getFallbackProvider(fallbackModelId);
 
     const result = await provider.complete({
       messages: [
@@ -124,7 +124,6 @@ async function generateThreadTitle(
     const title = result.text.trim().slice(0, 80);
 
     if (title) {
-      await supabase.from('danotch_threads').update({ title }).eq('id', threadId);
       console.log(`[runner] Thread title: "${title}"`);
       notch.send({
         type: 'subagent_event',
@@ -143,16 +142,17 @@ async function generateThreadTitle(
 export async function runChat(
   message: string,
   notch: NotchBridge,
-  options?: { sessionId?: string; userId?: string; threadId?: string }
+  options?: {
+    sessionId?: string;
+    userId?: string;
+    conversationId?: string;
+    modelId?: string;
+    history?: { role: 'user' | 'assistant'; content: string }[];
+  }
 ): Promise<Task & { threadId: string }> {
   const id = options?.sessionId ?? uuid();
   const userId = options?.userId;
-
-  let threadId = id;
-  if (userId) {
-    threadId = await ensureThread(userId, options?.threadId, message);
-    await saveMessage(threadId, userId, 'user', message);
-  }
+  const threadId = options?.conversationId ?? id;
 
   const task = createOrUpdateTask(id, message);
 
@@ -169,14 +169,16 @@ export async function runChat(
   try {
     // Resolve the LLM provider: user's BYOK config → server fallback
     const provider = userId
-      ? await getProviderForUser(userId)
-      : getFallbackProvider();
+      ? await getProviderForUser(userId, options?.modelId)
+      : getFallbackProvider(options?.modelId);
 
-    // Build conversation from in-memory history
-    const canonicalMessages: CanonicalMessage[] = task.chatHistory
-      .filter((m) => m.role === 'user' || m.role === 'agent')
+    // Conversation history is owned by the app and sent with each request.
+    const canonicalMessages: CanonicalMessage[] = [
+      ...(options?.history ?? []),
+      { role: 'user' as const, content: message },
+    ]
       .map((m) => ({
-        role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+        role: m.role,
         content: m.content,
       }));
 
@@ -349,20 +351,9 @@ export async function runChat(
       task.streamingText = '';
       task.currentToolName = undefined;
 
-      if (userId) {
+      if ((options?.history?.length ?? 0) === 0) {
         dbSave(async () => {
-          await saveMessage(threadId, userId, 'assistant', finalResponseText, {
-            input_tokens: streamResult.usage.inputTokens,
-            output_tokens: streamResult.usage.outputTokens,
-            tools_used: toolsUsed,
-            model: provider.modelId,
-            provider: provider.providerName,
-            status: 'completed',
-          });
-          await updateThreadTimestamp(threadId);
-          if (!options?.threadId) {
-            await generateThreadTitle(threadId, id, message, finalResponseText, notch, userId);
-          }
+          await generateThreadTitle(threadId, id, message, finalResponseText, notch, userId, options?.modelId);
         });
       }
 
@@ -382,20 +373,6 @@ export async function runChat(
     task.status = 'failed';
     task.error = errorMsg;
     task.completedAt = new Date();
-
-    if (userId) {
-      const partialText = fullText || task.streamingText || '';
-      dbSave(async () => {
-        await saveMessage(threadId, userId, 'assistant', partialText || '[No response — request failed]', {
-          tools_used: toolsUsed,
-          model: config.api.model,
-          status: 'failed',
-          error: errorMsg,
-          partial: partialText.length > 0,
-        });
-        await updateThreadTimestamp(threadId);
-      });
-    }
 
     notch.sendDone(id, { status: 'failed', error: errorMsg });
     return { ...task, threadId };

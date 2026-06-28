@@ -7,12 +7,15 @@ struct QuickPromptView: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            ChatModelSelectorView(viewModel: viewModel, maxWidth: 112)
+
             TextField("Ask Perch anything…", text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .foregroundStyle(.white)
                 .focused($isFocused)
                 .onSubmit { submit() }
+                .layoutPriority(1)
 
             sendButton
         }

@@ -23,6 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         applyAppIcon()
+        viewModel.interruptInProgressConversations()
 
         wsServer = WebSocketServer(viewModel: viewModel)
         wsServer?.start()
@@ -68,6 +69,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         windowController?.show()
 
         // Load initial data
+        viewModel.loadThreadHistory()
+        viewModel.loadProviderConfigs()
+        viewModel.loadProviderModels()
         viewModel.loadUnreadCount()
 
         // Go back to accessory mode (no dock icon)
@@ -140,6 +144,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        viewModel.interruptInProgressConversations()
         wsServer?.stop()
     }
 }

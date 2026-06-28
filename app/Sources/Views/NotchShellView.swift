@@ -328,14 +328,14 @@ struct NotchShellView: View {
 
             // Left cluster — Today + Agents
             HStack(spacing: 6) {
-                topBarTab("Today", isActive: viewModel.viewState == .overview || viewModel.isInTaskOrChat) {
+                topBarTab("Today", isActive: viewModel.viewState == .overview) {
                     withAnimation(DN.transition) { viewModel.viewState = .overview }
                 }
                 topBarIcon(
                     "sparkles",
-                    isActive: viewModel.viewState == .agents
+                    isActive: viewModel.viewState == .agents || viewModel.isInTaskOrChat
                 ) {
-                    withAnimation(DN.transition) { viewModel.viewState = .agents }
+                    withAnimation(DN.transition) { viewModel.viewState = .taskList }
                 }
             }
 
@@ -781,6 +781,7 @@ struct SettingsPanel: View {
         .smartScrollFade(28, bottomRadius: 28)
         .onAppear {
             viewModel.loadProviderConfigs()
+            viewModel.loadProviderModels()
             for app in ["gmail", "googlecalendar", "googledocs", "github"] {
                 viewModel.checkAppStatus(app)
             }
