@@ -23,4 +23,13 @@ export const config = {
   composio: {
     apiKey: process.env.COMPOSIO_API_KEY || '',
   },
+
+  // Dodo Payments (one-time purchase unlock)
+  dodo: {
+    apiKey: process.env.DODO_PAYMENTS_API_KEY || '',
+    webhookKey: process.env.DODO_PAYMENTS_WEBHOOK_KEY || '',
+    productId: process.env.DODO_PAYMENTS_PRODUCT_ID || '',
+    returnUrl: process.env.DODO_PAYMENTS_RETURN_URL || '',
+    environment: process.env.DODO_PAYMENTS_ENVIRONMENT || 'test_mode',
+  },
 } as const;

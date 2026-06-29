@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase.js';
 import { computeNextRun } from './compute-next.js';
 import type { NotchBridge } from '../events/notch.js';
-import { getProviderForUser } from '../providers/factory.js';
+import { resolveProviderForUser } from '../billing/entitlements.js';
 import { config } from '../config.js';
 
 const TICK_INTERVAL = 30_000; // 30 seconds
@@ -86,7 +86,7 @@ async function executeTask(task: Record<string, unknown>, notch: NotchBridge) {
   // Resolve the user's LLM provider (BYOK or server fallback)
   let providerName = 'unknown';
   try {
-    const provider = await getProviderForUser(userId);
+    const provider = (await resolveProviderForUser(userId)).provider;
     providerName = `${provider.providerName}/${provider.modelId}`;
 
     // Build system prompt

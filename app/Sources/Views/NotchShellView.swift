@@ -753,6 +753,10 @@ struct SettingsPanel: View {
                     settingsToggle("Keep open in chat", $viewModel.settings.keepOpenInChat)
                 }
 
+                section(title: "Billing") {
+                    billingSection
+                }
+
                 section(title: "Provider") {
                     defaultProviderRow
                     ForEach(["anthropic", "openai", "openrouter"], id: \.self) { providerType in
@@ -782,6 +786,7 @@ struct SettingsPanel: View {
         .onAppear {
             viewModel.loadProviderConfigs()
             viewModel.loadProviderModels()
+            viewModel.loadBillingStatus()
             for app in ["gmail", "googlecalendar", "googledocs", "github"] {
                 viewModel.checkAppStatus(app)
             }
@@ -857,23 +862,133 @@ struct SettingsPanel: View {
         .tint(DN.accent)
     }
 
+    // MARK: - Billing
+
+    private var billingSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Label(billingTitle, systemImage: billingIcon)
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+                billingBadge
+            }
+
+            Text(billingSubtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let error = viewModel.billingError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(DN.accent)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Button("Refresh") { viewModel.loadBillingStatus() }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .tint(.clear)
+
+                if viewModel.billingStatus?.requiresPurchase == true {
+                    Button("Buy $5") { viewModel.startCheckout() }
+                        .buttonStyle(.glass)
+                        .controlSize(.small)
+                        .tint(DN.accent)
+                }
+            }
+        }
+    }
+
+    private var billingTitle: String {
+        guard let status = viewModel.billingStatus else {
+            return viewModel.billingLoading ? "Loading trial status" : "Trial status"
+        }
+        if status.isPaid { return "Lifetime unlocked" }
+        if status.isTrialing { return "\(status.trialDaysRemaining) day trial left" }
+        return "Trial ended"
+    }
+
+    private var billingSubtitle: String {
+        guard let status = viewModel.billingStatus else {
+            return "Perch checks trial and purchase status on the backend."
+        }
+        if status.hasActiveProvider {
+            return "Using your \(status.activeProvider ?? "provider") key for chat and scheduled tasks."
+        }
+        if status.canUseServerKey {
+            return "Using the server Anthropic key during your 14-day trial."
+        }
+        if status.requiresPurchase {
+            return "Buy once to unlock the app, then add your own provider key to continue."
+        }
+        if status.requiresProviderKey {
+            return "Add or activate a provider key below to continue using chat and scheduled tasks."
+        }
+        return "Billing status is active."
+    }
+
+    private var billingIcon: String {
+        guard let status = viewModel.billingStatus else { return "hourglass" }
+        if status.isPaid { return "checkmark.seal.fill" }
+        if status.isTrialing { return "timer" }
+        return "exclamationmark.triangle.fill"
+    }
+
+    private var billingBadge: some View {
+        let label: String
+        let color: Color
+        if let status = viewModel.billingStatus {
+            if status.isPaid {
+                label = "PAID"
+                color = DN.success
+            } else if status.isTrialing {
+                label = "TRIAL"
+                color = DN.warning
+            } else {
+                label = "EXPIRED"
+                color = DN.accent
+            }
+        } else {
+            label = viewModel.billingLoading ? "LOADING" : "UNKNOWN"
+            color = DN.textSecondary
+        }
+
+        return Text(label)
+            .font(DN.label(9))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.12), in: Capsule())
+    }
+
     // MARK: - Default provider row
 
     private var defaultProviderRow: some View {
         let isUsingDefault = !viewModel.providerConfigs.contains { $0.isActive }
+        let serverKeyAllowed = viewModel.billingStatus?.canUseServerKey ?? true
         return HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Label("Default", systemImage: "server.rack")
-                Text("Server Anthropic key")
+                Label("Trial Default", systemImage: "server.rack")
+                Text(serverKeyAllowed ? "Server Anthropic key during trial" : "Requires active BYOK provider")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
             if isUsingDefault {
-                Text("Active").foregroundStyle(.green).font(.callout)
+                Text(serverKeyAllowed ? "Active" : "Locked")
+                    .foregroundStyle(serverKeyAllowed ? .green : DN.accent)
+                    .font(.callout)
             } else {
-                Button("Use") { viewModel.deactivateAllProviders() }
-                    .buttonStyle(.glass).controlSize(.small).tint(.clear)
+                if serverKeyAllowed {
+                    Button("Use") { viewModel.deactivateAllProviders() }
+                        .buttonStyle(.glass).controlSize(.small).tint(.clear)
+                } else {
+                    Text("Trial ended")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }

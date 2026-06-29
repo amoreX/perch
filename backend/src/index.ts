@@ -7,6 +7,7 @@ import { createScheduledRoutes } from './routes/scheduled.js';
 import { createNotificationRoutes } from './routes/notifications.js';
 import { createAppRoutes } from './routes/apps.js';
 import { createProviderRoutes } from './routes/provider.js';
+import { createBillingRoutes } from './routes/billing.js';
 import { startScheduler, stopScheduler } from './scheduler/index.js';
 import { config } from './config.js';
 
@@ -36,6 +37,7 @@ app.use('/api/scheduled', createScheduledRoutes());
 app.use('/api/notifications', createNotificationRoutes());
 app.use('/api/apps', createAppRoutes());
 app.use('/api/provider', createProviderRoutes());
+app.use('/api/billing', createBillingRoutes());
 
 app.listen(config.port, () => {
   console.log(`[perch-backend] http://localhost:${config.port}`);

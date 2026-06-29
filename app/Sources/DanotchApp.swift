@@ -72,6 +72,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         viewModel.loadThreadHistory()
         viewModel.loadProviderConfigs()
         viewModel.loadProviderModels()
+        viewModel.loadBillingStatus()
         viewModel.loadUnreadCount()
 
         // Go back to accessory mode (no dock icon)

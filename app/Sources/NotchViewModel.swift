@@ -206,6 +206,11 @@ class NotchViewModel: ObservableObject {
     @Published var isLoadingModels = false
     @Published var modelListError: String?
 
+    // Billing / trial state
+    @Published var billingStatus: BillingStatus?
+    @Published var billingLoading = false
+    @Published var billingError: String?
+
     // WebSocket send callback (set by WebSocketServer)
     var wsSend: (([String: Any]) -> Void)?
 
@@ -732,6 +737,95 @@ class NotchViewModel: ObservableObject {
         appLoading[appType] = false
     }
 
+    // MARK: - Billing
+
+    func loadBillingStatus() {
+        guard let auth = authManager, let token = auth.accessToken else { return }
+        billingLoading = true
+        billingError = nil
+
+        Task {
+            var request = URLRequest(url: URL(string: "\(APIConfig.baseURL)/api/billing/status")!)
+            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+            guard let (data, response) = try? await URLSession.shared.data(for: request) else {
+                await MainActor.run {
+                    self.billingLoading = false
+                    self.billingError = "Cannot reach billing service"
+                }
+                return
+            }
+
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+
+            guard status == 200 else {
+                let message = json["error"] as? String ?? "Billing status unavailable"
+                await MainActor.run {
+                    self.billingLoading = false
+                    self.billingError = message
+                    if status == 404 {
+                        self.authManager?.logout()
+                    }
+                }
+                return
+            }
+
+            let parsed = BillingStatus(
+                billingStatus: json["billingStatus"] as? String ?? "trialing",
+                trialStartedAt: json["trialStartedAt"] as? String,
+                trialEndsAt: json["trialEndsAt"] as? String,
+                trialDaysRemaining: json["trialDaysRemaining"] as? Int ?? 0,
+                lifetimePurchasedAt: json["lifetimePurchasedAt"] as? String,
+                hasActiveProvider: json["hasActiveProvider"] as? Bool ?? false,
+                activeProvider: json["activeProvider"] as? String,
+                canUseServerKey: json["canUseServerKey"] as? Bool ?? false,
+                requiresPurchase: json["requiresPurchase"] as? Bool ?? false,
+                requiresProviderKey: json["requiresProviderKey"] as? Bool ?? false
+            )
+
+            await MainActor.run {
+                self.billingStatus = parsed
+                self.billingLoading = false
+                self.billingError = nil
+            }
+        }
+    }
+
+    func startCheckout() {
+        guard let auth = authManager, let token = auth.accessToken else { return }
+        billingLoading = true
+        billingError = nil
+
+        Task {
+            var request = URLRequest(url: URL(string: "\(APIConfig.baseURL)/api/billing/checkout")!)
+            request.httpMethod = "POST"
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: [:] as [String: Any])
+
+            guard let (data, response) = try? await URLSession.shared.data(for: request) else {
+                await MainActor.run {
+                    self.billingLoading = false
+                    self.billingError = "Cannot start checkout"
+                }
+                return
+            }
+
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+
+            await MainActor.run {
+                self.billingLoading = false
+                if status == 200, let urlString = json["checkout_url"] as? String, let url = URL(string: urlString) {
+                    NSWorkspace.shared.open(url)
+                } else {
+                    self.billingError = json["error"] as? String ?? "Checkout is not ready yet"
+                }
+            }
+        }
+    }
+
     // MARK: - Provider Config (BYOK)
 
     func loadProviderConfigs() {
@@ -900,6 +994,7 @@ class NotchViewModel: ObservableObject {
                     self.providerError[provider] = nil
                     self.loadProviderConfigs()
                     self.loadProviderModels()
+                    self.loadBillingStatus()
                 }
             } else {
                 let errorMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
@@ -972,6 +1067,7 @@ class NotchViewModel: ObservableObject {
                     self.providerError[provider] = nil
                     self.loadProviderConfigs()
                     self.loadProviderModels()
+                    self.loadBillingStatus()
                 }
             } else {
                 let errorMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
@@ -1001,6 +1097,7 @@ class NotchViewModel: ObservableObject {
                 self.activeModelProvider = "anthropic"
                 self.loadProviderConfigs()
                 self.loadProviderModels()
+                self.loadBillingStatus()
             }
         }
     }
@@ -1021,6 +1118,7 @@ class NotchViewModel: ObservableObject {
                 self.providerError[provider] = nil
                 self.providerVerified[provider] = false
                 self.loadProviderModels()
+                self.loadBillingStatus()
             }
         }
     }

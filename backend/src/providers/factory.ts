@@ -34,6 +34,30 @@ export async function getProviderForUser(userId: string, fallbackModelId?: strin
 }
 
 /**
+ * Get only the user's active BYOK provider. Does not fall back to the server key.
+ */
+export async function getActiveProviderForUser(userId: string, modelOverride?: string): Promise<LLMProvider | null> {
+  try {
+    const { data, error } = await supabase
+      .from('danotch_provider_configs')
+      .select('provider, api_key_encrypted, model_id')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .single();
+
+    if (error || !data) return null;
+
+    const apiKey = decrypt(data.api_key_encrypted);
+    const modelId = modelOverride || data.model_id;
+    console.log(`[provider] User ${userId} BYOK → ${data.provider} (${modelId})`);
+    return createProvider(data.provider as ProviderType, apiKey, modelId);
+  } catch (err) {
+    console.warn(`[provider] Failed to load active provider for user ${userId}:`, err);
+    return null;
+  }
+}
+
+/**
  * Fallback provider using the server's ANTHROPIC_API_KEY env var.
  * Used when user has no provider config or for unauthenticated requests.
  */

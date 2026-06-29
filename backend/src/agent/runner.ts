@@ -5,6 +5,7 @@ import type { CanonicalTool, CanonicalMessage, CanonicalContentBlock, CanonicalT
 import { getProviderForUser, getFallbackProvider } from '../providers/factory.js';
 import { config } from '../config.js';
 import { supabase } from '../lib/supabase.js';
+import { resolveProviderForUser } from '../billing/entitlements.js';
 import { scheduledTaskTools, executeScheduledTool } from '../tools/scheduled.js';
 import { localTools, executeLocalTool } from '../tools/local.js';
 import { loadComposioTools, executeComposioTool, loadToolsForApp, COMPOSIO_APPS } from '../composio/tools.js';
@@ -167,9 +168,10 @@ export async function runChat(
   const toolsUsed: { name: string; input?: string; timestamp: string }[] = [];
 
   try {
-    // Resolve the LLM provider: user's BYOK config → server fallback
+    // Resolve the LLM provider. Authenticated users can use the server key only
+    // during trial; after that they need an active BYOK provider.
     const provider = userId
-      ? await getProviderForUser(userId, options?.modelId)
+      ? (await resolveProviderForUser(userId, options?.modelId)).provider
       : getFallbackProvider(options?.modelId);
 
     // Conversation history is owned by the app and sent with each request.

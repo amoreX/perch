@@ -537,7 +537,9 @@ All settings env-overridable:
 - `CLAUDE_MODEL` — fallback Anthropic model when using server key (default: claude-sonnet-4-6)
 - `MAX_TOKENS` — API max tokens (default: 4096)
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `SUPABASE_JWT_SECRET` — Supabase credentials (in `.env`, gitignored)
-- `ANTHROPIC_API_KEY` — fallback LLM key when user has no active BYOK provider
+- `SUPABASE_DB_URL` / `DATABASE_URL` — Supabase Postgres connection string for schema migrations; run `cd backend && npm run db:billing` to apply billing entitlement columns
+- `ANTHROPIC_API_KEY` — fallback LLM key during active trials
+- `DODO_PAYMENTS_API_KEY`, `DODO_PAYMENTS_WEBHOOK_KEY`, `DODO_PAYMENTS_PRODUCT_ID`, `DODO_PAYMENTS_RETURN_URL` — one-time purchase checkout/webhook configuration
 - `COMPOSIO_API_KEY` — Composio integration API key
 - `PROVIDER_KEY_SECRET` — AES key derivation for encrypting BYOK API keys (falls back to dev key with console warning if missing)
 

@@ -59,11 +59,17 @@ export function createAuthRoutes(): Router {
     }
     console.log(`[auth] Signup complete, session issued for ${email}`);
 
+    const trialStartedAt = new Date();
+    const trialEndsAt = new Date(trialStartedAt.getTime() + 14 * 24 * 60 * 60 * 1000);
+
     // Create user_profiles row
     const { error: profileError } = await supabase.from('danotch_user_profiles').insert({
       id: userId,
       email,
       full_name: full_name || usernameFromEmail(email),
+      trial_started_at: trialStartedAt.toISOString(),
+      trial_ends_at: trialEndsAt.toISOString(),
+      billing_status: 'trialing',
     });
 
     if (profileError) {
@@ -87,6 +93,9 @@ export function createAuthRoutes(): Router {
         id: userId,
         email,
         full_name: full_name || usernameFromEmail(email),
+        billing_status: 'trialing',
+        trial_started_at: trialStartedAt.toISOString(),
+        trial_ends_at: trialEndsAt.toISOString(),
       },
       session: {
         access_token: loginData.session.access_token,
@@ -117,11 +126,16 @@ export function createAuthRoutes(): Router {
     }
 
     // Fetch profile
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('danotch_user_profiles')
-      .select('full_name, avatar_url, plan')
+      .select('full_name, avatar_url, plan, billing_status, trial_started_at, trial_ends_at, lifetime_purchased_at')
       .eq('id', data.user.id)
       .single();
+
+    if (profileError || !profile) {
+      res.status(404).json({ error: 'Profile not found. Please sign up again.' });
+      return;
+    }
 
     res.json({
       user: {
@@ -130,6 +144,10 @@ export function createAuthRoutes(): Router {
         full_name: profile?.full_name ?? usernameFromEmail(email),
         avatar_url: profile?.avatar_url,
         plan: profile?.plan ?? 'free',
+        billing_status: profile.billing_status ?? 'trialing',
+        trial_started_at: profile.trial_started_at,
+        trial_ends_at: profile.trial_ends_at,
+        lifetime_purchased_at: profile.lifetime_purchased_at,
       },
       session: {
         access_token: data.session.access_token,

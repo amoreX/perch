@@ -44,7 +44,14 @@ npm install
 npm run dev       # :3001
 ```
 
-Needs a `.env` with Supabase credentials and at least one LLM key (`ANTHROPIC_API_KEY` for the fallback). `COMPOSIO_API_KEY` if you want app integrations, `PROVIDER_KEY_SECRET` to encrypt stored BYOK keys. All of it is env-overridable in `config.ts`.
+Needs a `.env` with Supabase credentials and at least one LLM key (`ANTHROPIC_API_KEY` for the trial fallback). `COMPOSIO_API_KEY` if you want app integrations, `PROVIDER_KEY_SECRET` to encrypt stored BYOK keys. For schema changes, add `SUPABASE_DB_URL` (or `DATABASE_URL`) with the Supabase Postgres connection string and run:
+
+```bash
+cd backend
+npm run db:billing
+```
+
+All of it is env-overridable in `config.ts`.
 
 ### the site
 
