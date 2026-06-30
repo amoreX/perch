@@ -14,6 +14,13 @@ if (!connectionString) {
   process.exit(1);
 }
 
+if (!connectionString.startsWith('postgresql://') && !connectionString.startsWith('postgres://')) {
+  console.error(
+    'Invalid database URL. Supabase project URLs like https://<ref>.supabase.co are API URLs, not Postgres connection strings. Use a URL that starts with postgresql:// or postgres://.',
+  );
+  process.exit(1);
+}
+
 const sql = await readFile(new URL('../sql/001_billing_entitlements.sql', import.meta.url), 'utf8');
 const client = new Client({
   connectionString,
