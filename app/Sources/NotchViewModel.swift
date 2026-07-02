@@ -74,24 +74,47 @@ class NotchSettings: ObservableObject {
     @Published var showAgentLiveState: Bool    { didSet { save() } }
     @Published var compactAgentRows: Bool      { didSet { save() } }
 
+    // Widget sizing: rawValue → "half" | "full"
+    @Published var widgetSizes: [String: String] = [:] { didSet { save() } }
+
+    func widgetIsFullWidth(_ widget: PinnedWidget) -> Bool {
+        widgetSizes[widget.rawValue] == "full"
+    }
+
+    func toggleWidgetSize(_ widget: PinnedWidget) {
+        let current = widgetSizes[widget.rawValue] ?? "half"
+        widgetSizes[widget.rawValue] = current == "half" ? "full" : "half"
+    }
+
     // Computed from pinnedWidgets for backward compatibility
     var showMusic: Bool { pinnedWidgets.contains(.music) }
     var musicSize: MusicSize { pinnedWidgets.count > 1 ? .mini : .big }
 
     /// Height of the expanded content area (below the top-bar) for the Today view.
     /// Widgets render in a two-column grid, so each row contributes the height
-    /// of its tallest widget.
+    /// of its tallest widget. Clamped so a couple of widgets don't leave a
+    /// mostly-empty notch, and so many widgets fall back to internal scrolling
+    /// instead of growing the notch off-screen.
     var todayExpandedH: CGFloat {
         let spacing: CGFloat = 10
-        var h: CGFloat = 72 + spacing  // clock card + gap
-
-        for rowStart in stride(from: 0, to: pinnedWidgets.count, by: 2) {
-            let row = pinnedWidgets[rowStart..<min(rowStart + 2, pinnedWidgets.count)]
-            h += (row.map(\.gridHeight).max() ?? 0) + spacing
+        var h: CGFloat = 80 + spacing  // clock card + gap
+        var i = 0
+        while i < pinnedWidgets.count {
+            let w = pinnedWidgets[i]
+            if widgetIsFullWidth(w) {
+                h += w.gridHeight + spacing
+                i += 1
+            } else if i + 1 < pinnedWidgets.count && !widgetIsFullWidth(pinnedWidgets[i + 1]) {
+                let row = [w, pinnedWidgets[i + 1]]
+                h += (row.map(\.gridHeight).max() ?? 0) + spacing
+                i += 2
+            } else {
+                h += w.gridHeight + spacing
+                i += 1
+            }
         }
-
         h += 46 + 10  // composer + bottom padding
-        return h
+        return min(max(h, 200), 320)
     }
 
     // UI state (persisted across restarts)
@@ -110,6 +133,7 @@ class NotchSettings: ObservableObject {
         showAgentLiveState = true
         compactAgentRows = false
         collapsedGroups = []
+        widgetSizes = [:]
 
         // Then load from file
         load()
@@ -126,6 +150,7 @@ class NotchSettings: ObservableObject {
             "showAgentLiveState": showAgentLiveState,
             "compactAgentRows": compactAgentRows,
             "collapsedGroups": Array(collapsedGroups),
+            "widgetSizes": widgetSizes,
         ]
         do {
             try FileManager.default.createDirectory(at: Self.configDir, withIntermediateDirectories: true, attributes: nil)
@@ -161,6 +186,7 @@ class NotchSettings: ObservableObject {
         if let v = json["showAgentLiveState"] as? Bool { showAgentLiveState = v }
         if let v = json["compactAgentRows"] as? Bool { compactAgentRows = v }
         if let v = json["collapsedGroups"] as? [String] { collapsedGroups = Set(v) }
+        if let v = json["widgetSizes"] as? [String: String] { widgetSizes = v }
     }
 }
 
@@ -186,6 +212,10 @@ class NotchViewModel: ObservableObject {
     @Published var shouldFocusChatInput = false
     @Published var isChatInputActive = false
     var mouseInContent = false
+    /// True while a widget is being dragged/reordered on the Today page.
+    /// Prevents the panel from auto-collapsing if the cursor briefly leaves
+    /// the shape bounds mid-drag.
+    var isDraggingWidget = false
     var lastViewBeforeCollapse: NotchViewState = .overview
 
     var authManager: AuthManager?

@@ -65,8 +65,16 @@ class NotchWindowController: NSObject {
     var swipeAccumulator: CGFloat = 0
     private var peekCancellable: AnyCancellable?
 
-    private let panelWidth: CGFloat = 580
-    private let panelHeight: CGFloat = 400
+    // The panel is sized well beyond the visible notch/expanded shape (which
+    // maxes out around 540x360) so SwiftUI-drawn effects that extend past the
+    // shape's edges — the drop shadow, and the widget-drag grab area near
+    // the grid's boundary — always have room to render/track without being
+    // clipped by the window frame. It intentionally does NOT span the full
+    // screen: `ignoresMouseEvents` is what makes clicks pass through to
+    // other apps outside the notch, and that only works reliably because the
+    // window itself doesn't cover those areas in the first place.
+    private let panelWidth: CGFloat = 740
+    private let panelHeight: CGFloat = 500
 
     private var activePanel: PerchPanel? {
         if let uuid = activeScreenUUID { return panels[uuid] }
@@ -298,45 +306,40 @@ class NotchWindowController: NSObject {
         }
     }
 
+    /// The rect (in global screen coordinates) that should actually receive
+    /// mouse events right now — the physical notch when collapsed, or the
+    /// expanded shape when expanded/peeking. Drives hover-triggered
+    /// expand/collapse.
+    ///
+    /// Discrete trigger zones — no fuzzy in-between region:
+    ///  - Collapsed: only the physical notch rect (exact width, exact height)
+    ///  - Expanded: only the actual expanded shape rect
+    ///  No padding, no overshoot — state flips cleanly between off and on.
+    private func currentInteractiveRect(on screen: NSScreen) -> NSRect {
+        let cx = screen.frame.midX
+        let nw = screen.notchWidth
+        let nh = screen.notchHeight
+
+        if viewModel.isExpanded {
+            let ew = expandedShapeWidth(notchW: nw)
+            let eh = expandedShapeHeight(notchH: nh)
+            return NSRect(x: cx - ew / 2, y: screen.frame.maxY - eh, width: ew, height: eh)
+        }
+
+        // Extend the hit rect UP past the screen's top edge so the very
+        // topmost row of pixels (which macOS sometimes reserves for the
+        // menu-bar edge / system gestures and which NSRect.contains
+        // treats as exclusive on the max edge) still counts as a hit.
+        let edgeSlack: CGFloat = 4
+        return NSRect(x: cx - nw / 2, y: screen.frame.maxY - nh, width: nw, height: nh + edgeSlack)
+    }
+
     private func checkMouse() {
         // Mouse position is in global coordinates, which span every attached
         // display, so we resolve which screen the cursor is on each tick.
         guard let screen = screenForMouse() else { return }
         let mouse = NSEvent.mouseLocation
-
-        let cx = screen.frame.midX
-        let nw = screen.notchWidth
-        let nh = screen.notchHeight
-
-        // Discrete trigger zones — no fuzzy in-between region:
-        //  - Collapsed: only the physical notch rect (exact width, exact height)
-        //  - Expanded: only the actual expanded shape rect
-        //  No padding, no overshoot — state flips cleanly between off and on.
-        let hit: Bool
-        if viewModel.isExpanded {
-            let ew = expandedShapeWidth(notchW: nw)
-            let eh = expandedShapeHeight(notchH: nh)
-            let expandedRect = NSRect(
-                x: cx - ew / 2,
-                y: screen.frame.maxY - eh,
-                width: ew,
-                height: eh
-            )
-            hit = expandedRect.contains(mouse)
-        } else {
-            // Extend the hit rect UP past the screen's top edge so the very
-            // topmost row of pixels (which macOS sometimes reserves for the
-            // menu-bar edge / system gestures and which NSRect.contains
-            // treats as exclusive on the max edge) still counts as a hit.
-            let edgeSlack: CGFloat = 4
-            let notchRect = NSRect(
-                x: cx - nw / 2,
-                y: screen.frame.maxY - nh,
-                width: nw,
-                height: nh + edgeSlack
-            )
-            hit = notchRect.contains(mouse)
-        }
+        let hit = currentInteractiveRect(on: screen).contains(mouse)
 
         if hit {
             // The cursor is now on `screen`; make sure the SwiftUI host lives
@@ -350,6 +353,12 @@ class NotchWindowController: NSObject {
                 expand()
             }
         } else if viewModel.isExpanded {
+            // Don't touch anything while a widget drag is in flight — the
+            // cursor can legitimately stray past the shape's hit-test rect
+            // mid-drag (e.g. near the grid edges) and we must not blur/collapse.
+            if viewModel.isDraggingWidget {
+                return
+            }
             // Clear chat input focus when mouse leaves the panel entirely
             if viewModel.isChatInputActive {
                 viewModel.isChatInputActive = false
@@ -381,6 +390,9 @@ class NotchWindowController: NSObject {
         }
         if viewModel.isQuickPrompt {
             return notchH + NotchShellView.quickPromptH
+        }
+        if viewModel.viewState == .overview {
+            return notchH + viewModel.settings.todayExpandedH
         }
         return notchH + NotchShellView.expandedH
     }
@@ -423,7 +435,8 @@ class NotchWindowController: NSObject {
         collapseTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
             guard let self = self else { return }
             self.collapseTimer = nil
-            if !self.viewModel.mouseInContent && !self.viewModel.isChatInputActive {
+            if !self.viewModel.mouseInContent && !self.viewModel.isChatInputActive
+                && !self.viewModel.isDraggingWidget {
                 self.collapse()
             }
         }

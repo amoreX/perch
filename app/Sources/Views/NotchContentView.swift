@@ -32,6 +32,11 @@ private struct TodayPage: View {
     @State private var dragLocation: CGPoint? = nil
     @State private var dragGrabOffset: CGSize = .zero
     @State private var widgetFrames: [PinnedWidget: CGRect] = [:]
+    @State private var isEditMode: Bool = false
+
+    // Approximate height available for the widget grid before scrolling kicks in.
+    // Panel expanded height is 320px. Clock card (72+10) + composer (46+10) + padding (4+10) = 152px.
+    private static let widgetVisibleH: CGFloat = 168
 
     private let statsTypes: [PinnedWidget] = [.ram, .disk, .network, .uptime, .processes]
     private let spacing: CGFloat = 10
@@ -41,12 +46,14 @@ private struct TodayPage: View {
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: spacing) {
-                TodayClockCard(viewModel: viewModel)
-                    .frame(height: 72)
+                TodayClockCard(viewModel: viewModel, isEditMode: $isEditMode)
+                    .frame(height: 80)
 
                 widgetGrid
 
-                composer
+                if !isEditMode {
+                    composer
+                }
             }
             .padding(.bottom, 4)
         }
@@ -57,6 +64,9 @@ private struct TodayPage: View {
             if v { composerFocused = true; viewModel.shouldFocusChatInput = false }
         }
         .onChange(of: composerFocused) { _, f in viewModel.isChatInputActive = f }
+        .onChange(of: isEditMode) { _, editing in
+            if editing { composerFocused = false }
+        }
     }
 
     // MARK: - Widget grid
@@ -65,6 +75,11 @@ private struct TodayPage: View {
         VStack(spacing: spacing) {
             ForEach(widgetRows.indices, id: \.self) { rowIndex in
                 let row = widgetRows[rowIndex]
+
+                if scrollBoundaryRow == rowIndex {
+                    scrollBoundaryLine
+                }
+
                 if row.count == 1, let widget = row.first {
                     widgetGridCell(widget)
                         .frame(maxWidth: .infinity)
@@ -76,6 +91,10 @@ private struct TodayPage: View {
                     }
                 }
             }
+
+            if isEditMode {
+                addWidgetHint
+            }
         }
         .coordinateSpace(name: WidgetGridLayout.coordinateSpaceName)
         .overlay(alignment: .topLeading) {
@@ -85,21 +104,88 @@ private struct TodayPage: View {
             widgetFrames = frames
         }
         .animation(DN.transition, value: pinned)
+        .animation(DN.transition, value: isEditMode)
+    }
+
+    // Row where scrolling begins (nil if everything fits)
+    private var scrollBoundaryRow: Int? {
+        guard widgetRows.count > 1 else { return nil }
+        var cumH: CGFloat = 0
+        for (index, row) in widgetRows.enumerated() {
+            let rowH = (row.map { $0.gridHeight }.max() ?? 0) + spacing
+            cumH += rowH
+            if cumH > Self.widgetVisibleH {
+                return index
+            }
+        }
+        return nil
+    }
+
+    private var scrollBoundaryLine: some View {
+        HStack(spacing: 6) {
+            Rectangle()
+                .fill(Color.white.opacity(0.12))
+                .frame(height: 1)
+            Text("scroll")
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.25))
+                .fixedSize()
+            Rectangle()
+                .fill(Color.white.opacity(0.12))
+                .frame(height: 1)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var addWidgetHint: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "plus.circle")
+                .font(.system(size: 10))
+            Text("Add widgets in Settings → Widgets")
+                .font(.system(size: 10))
+        }
+        .foregroundStyle(Color.white.opacity(0.3))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
     }
 
     private var widgetRows: [[PinnedWidget]] {
-        stride(from: 0, to: pinned.count, by: 2).map { start in
-            Array(pinned[start..<min(start + 2, pinned.count)])
+        var rows: [[PinnedWidget]] = []
+        var i = 0
+        while i < pinned.count {
+            let w = pinned[i]
+            if viewModel.settings.widgetIsFullWidth(w) {
+                rows.append([w])
+                i += 1
+            } else if i + 1 < pinned.count && !viewModel.settings.widgetIsFullWidth(pinned[i + 1]) {
+                rows.append([w, pinned[i + 1]])
+                i += 2
+            } else {
+                rows.append([w])
+                i += 1
+            }
         }
+        return rows
     }
 
     private func widgetGridCell(_ widget: PinnedWidget) -> some View {
         let isDragging = draggingWidget == widget
-        return widgetCard(widget)
+        let base = widgetCard(widget)
             .frame(maxWidth: .infinity)
             .frame(height: widget.gridHeight)
             .opacity(isDragging ? 0.18 : 1)
             .scaleEffect(isDragging ? 0.96 : 1)
+            .overlay(alignment: .topTrailing) {
+                if isEditMode && !isDragging {
+                    editModeHandleOverlay(widget)
+                }
+            }
+            .overlay {
+                if isEditMode && !isDragging {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                }
+            }
             .background(
                 GeometryReader { proxy in
                     Color.clear.preference(
@@ -109,8 +195,37 @@ private struct TodayPage: View {
                 }
             )
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .simultaneousGesture(widgetDragGesture(for: widget))
             .animation(DN.transition, value: draggingWidget)
+            .animation(DN.transition, value: isEditMode)
+        return applyDragGesture(to: base, widget: widget)
+    }
+
+    private func editModeHandleOverlay(_ widget: PinnedWidget) -> some View {
+        HStack(spacing: 4) {
+            // Resize toggle: full-width ↔ half-width
+            Button(action: {
+                withAnimation(DN.transition) {
+                    viewModel.settings.toggleWidgetSize(widget)
+                }
+            }) {
+                Image(systemName: viewModel.settings.widgetIsFullWidth(widget) ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .frame(width: 20, height: 20)
+                    .background(Color.black.opacity(0.55))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+
+            // Drag handle indicator
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 20, height: 20)
+                .background(Color.black.opacity(0.55))
+                .clipShape(Circle())
+        }
+        .padding(8)
     }
 
     @ViewBuilder
@@ -143,20 +258,28 @@ private struct TodayPage: View {
         }
     }
 
-    private func widgetDragGesture(for widget: PinnedWidget) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.28, maximumDistance: 8)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(WidgetGridLayout.coordinateSpaceName)))
-            .onChanged { value in
-                switch value {
-                case .second(true, let drag?):
-                    updateDrag(widget: widget, value: drag)
-                default:
-                    break
-                }
-            }
-            .onEnded { _ in
-                finishDrag()
-            }
+    private func applyDragGesture(to view: some View, widget: PinnedWidget) -> some View {
+        if isEditMode {
+            return AnyView(view.gesture(
+                DragGesture(minimumDistance: 4, coordinateSpace: .named(WidgetGridLayout.coordinateSpaceName))
+                    .onChanged { value in updateDrag(widget: widget, value: value) }
+                    .onEnded { _ in finishDrag() }
+            ))
+        } else {
+            return AnyView(view.simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.28, maximumDistance: 8)
+                    .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(WidgetGridLayout.coordinateSpaceName)))
+                    .onChanged { value in
+                        switch value {
+                        case .second(true, let drag?):
+                            updateDrag(widget: widget, value: drag)
+                        default:
+                            break
+                        }
+                    }
+                    .onEnded { _ in finishDrag() }
+            ))
+        }
     }
 
     private func updateDrag(widget: PinnedWidget, value: DragGesture.Value) {
@@ -168,6 +291,7 @@ private struct TodayPage: View {
                 width: value.startLocation.x - frame.midX,
                 height: value.startLocation.y - frame.midY
             )
+            viewModel.isDraggingWidget = true
             withAnimation(DN.transition) {
                 draggingWidget = widget
             }
@@ -197,6 +321,7 @@ private struct TodayPage: View {
     }
 
     private func finishDrag() {
+        viewModel.isDraggingWidget = false
         withAnimation(DN.transition) {
             draggingWidget = nil
             dragLocation = nil
@@ -228,14 +353,22 @@ private struct TodayPage: View {
                 .foregroundStyle(.white)
                 .focused($composerFocused)
                 .onSubmit { submit() }
+                .contentShape(Rectangle())
+                .onTapGesture { composerFocused = true }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
             sendButton
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
+        .frame(maxWidth: .infinity)
         .glassEffect(.regular, in: .capsule)
-        .contentShape(.capsule)
-        .onTapGesture { composerFocused = true }
+        .contentShape(Rectangle())
+        // `simultaneousGesture` (not `.onTapGesture`) so this still fires even
+        // though the TextField above already claims its own tap — otherwise
+        // only the placeholder/text glyphs were focusable, not the rest of
+        // the field's padded width or the empty capsule area around it.
+        .simultaneousGesture(TapGesture().onEnded { composerFocused = true })
     }
 
     private var sendButton: some View {
@@ -271,26 +404,50 @@ private struct WidgetFramePreferenceKey: PreferenceKey {
 
 private struct TodayClockCard: View {
     @ObservedObject var viewModel: NotchViewModel
+    @Binding var isEditMode: Bool
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(viewModel.timeString)
-                .font(.system(size: 36, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .monospacedDigit()
-                .tracking(-1.2)
-            Text(viewModel.periodString)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
+        HStack(alignment: .center, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(viewModel.timeString)
+                    .font(.system(size: 32, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .tracking(-1.2)
+                Text(viewModel.periodString)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
-            Text(viewModel.dateString)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(viewModel.dateString)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                editButton
+            }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .glassCell(cornerRadius: 18)
+    }
+
+    private var editButton: some View {
+        Button(action: { withAnimation(DN.transition) { isEditMode.toggle() } }) {
+            HStack(spacing: 3) {
+                Image(systemName: isEditMode ? "checkmark" : "square.grid.2x2")
+                    .font(.system(size: 8, weight: .semibold))
+                Text(isEditMode ? "Done" : "Edit")
+                    .font(.system(size: 9, weight: .semibold))
+            }
+            .foregroundStyle(isEditMode ? DN.success : Color.white.opacity(0.4))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(isEditMode ? DN.success.opacity(0.18) : Color.white.opacity(0.07))
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

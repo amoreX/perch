@@ -9,10 +9,24 @@ struct NotchShellView: View {
     private var notchH: CGFloat { screen.notchHeight }
     private var expanded: Bool { viewModel.isExpanded }
 
-    // Single canonical expanded size — no per-view dimension change so view-switching
-    // never resizes the notch frame. Inner ScrollViews handle overflow.
+    // Canonical expanded size for every view *except* the Today overview,
+    // which sizes itself to its pinned widget count (see `contentH` below).
+    // Inner ScrollViews handle overflow beyond these sizes.
     static let expandedW: CGFloat = 540
     static let expandedH: CGFloat = 320
+
+    /// Height of the expanded content area for the current view state.
+    /// Only `.overview` (the Today page) varies with widget count; every
+    /// other tab keeps the fixed canonical height so switching tabs away
+    /// from Today doesn't jump around.
+    private var contentH: CGFloat {
+        switch viewModel.viewState {
+        case .overview:
+            return viewModel.settings.todayExpandedH
+        default:
+            return Self.expandedH
+        }
+    }
 
     private var shapeWidth: CGFloat {
         if viewModel.isPeeking {
@@ -28,7 +42,7 @@ struct NotchShellView: View {
         }
         if !expanded { return notchH }
         if viewModel.isQuickPrompt { return notchH + Self.quickPromptH }
-        return notchH + Self.expandedH
+        return notchH + contentH
     }
 
     static let quickPromptH: CGFloat = 58
